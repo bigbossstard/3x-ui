@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AutoComplete,
@@ -577,6 +577,8 @@ export default function ClientFormModal({
   const hostOptions = useMemo(() => {
     const attached = new Set(inboundIds || []);
     const selected = new Set(hostGroupIds || []);
+    const inboundById = new Map((inbounds || []).map((ib) => [ib.id, ib]));
+
     return (hosts || [])
       .filter((host) => !!host.groupId)
       .filter(
@@ -586,10 +588,48 @@ export default function ClientFormModal({
           (host.inboundIds || []).some((id) => attached.has(id)),
       )
       .map((host) => {
-        const label = `${host.remark || host.groupId}${host.hosts?.length ? ` — ${host.hosts.join(', ')}` : ''}`;
-        return { label, value: host.groupId, title: label };
+        const relevantInboundIds = (host.inboundIds || []).filter(
+          (id) => !attached.size || attached.has(id),
+        );
+        const disabledInboundNames = relevantInboundIds
+          .map((id) => inboundById.get(id))
+          .filter((ib): ib is InboundOption => !!ib && !ib.enable)
+          .map((ib) => formatInboundLabel(ib.tag, ib.remark));
+        const enabledInboundCount = relevantInboundIds.filter(
+          (id) => inboundById.get(id)?.enable,
+        ).length;
+
+        const labelText = `${host.remark || host.groupId}${host.hosts?.length ? ` — ${host.hosts.join(', ')}` : ''}`;
+        const disabledOnly = disabledInboundNames.length > 0 && enabledInboundCount === 0;
+
+        let statusTag: ReactNode = null;
+        if (disabledInboundNames.length > 0) {
+          statusTag = (
+            <Tooltip
+              title={t(
+                disabledOnly
+                  ? 'pages.clients.hostGroupDisabledOnly'
+                  : 'pages.clients.hostGroupAlsoDisabled',
+                { inbounds: disabledInboundNames.join(', ') },
+              )}
+            >
+              <Tag color={disabledOnly ? 'default' : 'warning'} style={{ marginInlineStart: 4 }}>
+                ⚠
+              </Tag>
+            </Tooltip>
+          );
+        }
+
+        const label = (
+          <span style={disabledOnly ? { opacity: 0.55 } : undefined}>
+            {labelText}
+            {statusTag}
+          </span>
+        );
+
+        return { label, value: host.groupId, title: labelText };
       });
-  }, [hosts, inboundIds, hostGroupIds]);
+  }, [hosts, inbounds, inboundIds, hostGroupIds, t]);
 
   const inboundOptions = useMemo(
     () =>
