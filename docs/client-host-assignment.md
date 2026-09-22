@@ -47,7 +47,18 @@ It must distinguish:
 ## Safety rules
 
 The patch must fail closed when an expected integration point is absent. It must never silently apply a partially recognized patch after an upstream architectural change.
+## Runtime packaging
+
+The frontend is not deployed as a separate runtime component. The React SPA is built into `internal/web/dist` and embedded into the Go `x-ui` binary at build time.
+
+For an existing installation, the feature can therefore be deployed as a drop-in replacement of the panel binary while preserving the existing database, service unit, subscription settings, Xray binaries, and other installation data.
+
+Do not treat this as a DLL/plugin injection. 3x-ui does not expose a plugin-loading boundary for this feature. External response filtering is possible only as a separate subscription proxy/service, which would duplicate part of 3x-ui's subscription logic and create another compatibility surface.
 
 ## Upstream maintenance
 
-Keep `main` clean and aligned with `MHSanaei/3x-ui`. Develop the feature on `client-host` using small, isolated commits. Future compatibility tooling should detect the upstream structure before applying/rebasing the feature.
+The `client-host` branch must remain the only patched branch; `main` stays aligned with `MHSanaei/3x-ui`.
+
+The repository includes `.github/workflows/upstream-sync.yml`, which performs a scheduled clean-merge check against upstream `main` and opens an upstream-sync PR when the merge applies cleanly. If Git cannot merge the upstream changes without conflicts, the workflow fails closed and does not modify `client-host`.
+
+This makes upstream changes detectable before deployment. A future upstream change in the client, Host, subscription, or generated-API integration points may still require a manual patch adjustment.
