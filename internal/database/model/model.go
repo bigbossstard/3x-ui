@@ -954,6 +954,14 @@ type ClientRecord struct {
 
 func (ClientRecord) TableName() string { return "clients" }
 
+type ClientHost struct {
+	ClientId int    `json:"clientId" gorm:"primaryKey;column:client_id;index"`
+	GroupId  string `json:"groupId" gorm:"primaryKey;column:group_id;index"`
+}
+
+func (ClientHost) TableName() string { return "client_hosts" }
+
+
 type ClientGroup struct {
 	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name      string `json:"name" gorm:"uniqueIndex;not null"`

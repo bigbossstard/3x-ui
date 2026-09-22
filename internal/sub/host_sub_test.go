@@ -470,3 +470,54 @@ func TestSub_HostCipherSuitesJSON(t *testing.T) {
 		t.Fatalf("a host with no cipher suites should inherit the inbound's:\n%s", out)
 	}
 }
+
+
+func TestSub_ClientHostAssignmentFiltersHosts(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-host", "client", 4450, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-a", SortOrder: 1, Remark: "A", Address: "a.example.com", Port: 8443, Security: "tls"})
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-b", SortOrder: 2, Remark: "B", Address: "b.example.com", Port: 8443, Security: "tls"})
+
+	var client model.ClientRecord
+	if err := database.GetDB().Where("email = ?", "client@e").First(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+	if err := database.GetDB().Create(&model.ClientHost{ClientId: client.Id, GroupId: "group-a"}).Error; err != nil {
+		t.Fatalf("assign host group: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-host", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	joined := strings.Join(links, "\n")
+	if !strings.Contains(joined, "a.example.com:8443") {
+		t.Fatalf("assigned host should render: %s", joined)
+	}
+	if strings.Contains(joined, "b.example.com:8443") {
+		t.Fatalf("unassigned host must not render: %s", joined)
+	}
+}
+
+func TestSub_ClientHostAssignmentDoesNotFallbackOnMissingInboundHost(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-host", "restricted", 4451, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "other-group", SortOrder: 1, Remark: "OTHER", Address: "other.example.com", Port: 8443, Security: "tls"})
+
+	var client model.ClientRecord
+	if err := database.GetDB().Where("email = ?", "restricted@e").First(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+	if err := database.GetDB().Create(&model.ClientHost{ClientId: client.Id, GroupId: "missing-here"}).Error; err != nil {
+		t.Fatalf("assign host group: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-host", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("restricted client with no matching Host must not fall back to the inbound link: %v", links)
+	}
+}
+

@@ -808,6 +808,10 @@
       "remaining": "Остаток",
       "duration": "Длительность",
       "attachedInbounds": "Привязанные входящие",
+
+      "attachedHosts": "Привязанные хосты",
+      "selectHost": "Выберите группы хостов",
+      "hostsEmptyMeansAll": "Оставьте пустым, чтобы использовать все хосты из привязанных входящих.",
       "selectInbound": "Выберите один или несколько входящих",
       "selectAllInbounds": "Выбрать всё",
       "clearAllInbounds": "Очистить всё",

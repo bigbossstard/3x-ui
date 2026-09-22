@@ -76,6 +76,7 @@ type SubService struct {
 	// with the clients array left out; generators read only inbound-level
 	// fields (encryption, method, version, …) from it.
 	settingsByInbound map[int]map[string]any
+	clientHostSelections map[string]clientHostSelection
 }
 
 // NewSubService creates a new subscription service with the given configuration.
@@ -111,6 +112,7 @@ func (s *SubService) PrepareForRequest(host string) {
 	s.clientsByInbound = map[int]map[string]model.Client{}
 	s.fullyPrimedInbounds = map[int]bool{}
 	s.settingsByInbound = map[int]map[string]any{}
+	s.clientHostSelections = map[string]clientHostSelection{}
 	s.loadNodes()
 	s.loadRemarkSettings()
 	s.subCalendarExpireInclusive, _ = s.settingService.GetSubCalendarExpireInclusive()
@@ -435,18 +437,20 @@ func (s *SubService) getSubs(subId string) ([]string, []string, int64, xray.Clie
 		s.projectThroughFallbackMaster(inbound)
 		// Host overrides apply AFTER fallback projection so a host's
 		// address/TLS wins over the projected master stream.
-		hostEps := s.hostEndpoints(inbound, "raw")
 		for _, client := range clients {
 			if client.Enable {
 				hasEnabledClient = true
 			}
+			hostEps, restricted := s.hostEndpointsForClient(inbound, "raw", client.Email)
 			var link string
 			if len(hostEps) > 0 {
 				link = s.linkFromHosts(inbound, client, hostEps)
-			} else {
+			} else if !restricted {
 				link = s.GetLink(inbound, client.Email)
 			}
-			result = append(result, link)
+			if link != "" {
+				result = append(result, link)
+			}
 			emails = append(emails, client.Email)
 			seenEmails[client.Email] = struct{}{}
 		}
@@ -504,7 +508,6 @@ func (s *SubService) inboundLinks(inbound *model.Inbound) []string {
 	}
 	s.primeLinkClients(inbound.Id, clients, true)
 	s.projectThroughFallbackMaster(inbound)
-	hostEps := s.hostEndpoints(inbound, "raw")
 	var out []string
 	seen := make(map[string]struct{}, len(clients))
 	for _, client := range clients {
@@ -513,13 +516,16 @@ func (s *SubService) inboundLinks(inbound *model.Inbound) []string {
 			continue
 		}
 		seen[key] = struct{}{}
+		hostEps, restricted := s.hostEndpointsForClient(inbound, "raw", client.Email)
 		var link string
 		if len(hostEps) > 0 {
 			link = s.linkFromHosts(inbound, client, hostEps)
-		} else {
+		} else if !restricted {
 			link = s.GetLink(inbound, client.Email)
 		}
-		out = append(out, splitLinkLines(link)...)
+		if link != "" {
+			out = append(out, splitLinkLines(link)...)
+		}
 	}
 	return out
 }

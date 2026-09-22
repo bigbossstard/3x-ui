@@ -1129,6 +1129,33 @@ export const sections: readonly Section[] = [
       },
       {
         method: 'GET',
+        path: '/panel/api/clients/:email/hosts',
+        summary:
+          'Return the HostGroup IDs explicitly assigned to this client for subscription endpoint selection. An empty array means legacy behavior: all enabled hosts from the client\'s attached inbounds.',
+        params: [
+          { name: 'email', in: 'path', type: 'string', desc: 'Client email (unique identifier).' },
+        ],
+        response: '{\n  "success": true,\n  "obj": ["group-id-1", "group-id-2"]\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/clients/:email/hosts',
+        summary:
+          'Replace the client\'s HostGroup assignment for subscription endpoint selection. Use an empty hostGroupIds array to restore legacy behavior and include all enabled hosts from attached inbounds.',
+        params: [
+          { name: 'email', in: 'path', type: 'string', desc: 'Client email (unique identifier).' },
+          {
+            name: 'hostGroupIds',
+            in: 'body (json)',
+            type: 'string[]',
+            desc: 'HostGroup IDs to assign. Empty array restores legacy all-host behavior.',
+          },
+        ],
+        body: '{\n  "hostGroupIds": ["group-id-1", "group-id-2"]\n}',
+        response: '{\n  "success": true\n}',
+      },
+      {
+        method: 'GET',
         path: '/panel/api/clients/get/tgId/:tgId',
         summary:
           'Fetch clients by Telegram user ID. Returns an array since multiple clients can share the same Telegram ID.',

@@ -60,6 +60,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useClients } from '@/hooks/useClients';
 import { useNodesQuery } from '@/api/queries/useNodesQuery';
+import { useHostsQuery } from '@/api/queries/useHostsQuery';
 import { useDatepicker } from '@/hooks/useDatepicker';
 import type {
   ClientRecord,
@@ -381,12 +382,14 @@ export default function ClientsPage() {
   // Node list for the Nodes filter; the section only renders when the panel
   // actually manages nodes (#4997).
   const { nodes } = useNodesQuery();
+  const { hosts } = useHostsQuery();
 
   const [togglingEmail, setTogglingEmail] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'add' | 'edit'>('add');
   const [editingClient, setEditingClient] = useState<ClientRecord | null>(null);
   const [editingAttachedIds, setEditingAttachedIds] = useState<number[]>([]);
+  const [editingHostGroupIds, setEditingHostGroupIds] = useState<string[]>([]);
   const [editingExternalLinks, setEditingExternalLinks] = useState<ExternalLink[]>([]);
   const [editingTunnelAllowedIPs, setEditingTunnelAllowedIPs] = useState<Record<number, string>>(
     {},
@@ -677,6 +680,7 @@ export default function ClientsPage() {
     setFormMode('add');
     setEditingClient(null);
     setEditingAttachedIds([]);
+    setEditingHostGroupIds([]);
     setEditingExternalLinks([]);
     setEditingTunnelAllowedIPs({});
     setFormOpen(true);
@@ -694,6 +698,7 @@ export default function ClientsPage() {
       setEditingClient(merged);
       const ids = full?.inboundIds ?? (Array.isArray(row.inboundIds) ? row.inboundIds : []);
       setEditingAttachedIds([...ids]);
+      setEditingHostGroupIds([...(full?.hostGroupIds ?? [])]);
       setEditingExternalLinks(Array.isArray(full?.externalLinks) ? [...full.externalLinks] : []);
       setEditingTunnelAllowedIPs(full?.tunnelAllowedIPs ?? {});
       setFormOpen(true);
@@ -992,19 +997,31 @@ export default function ClientsPage() {
 
   const onSave = useCallback(
     async (
-      payload: Record<string, unknown> | { client: Record<string, unknown>; inboundIds: number[] },
+      payload:
+        | Record<string, unknown>
+        | { client: Record<string, unknown>; inboundIds: number[]; hostGroupIds?: string[] },
       meta:
-        | { isEdit: false; email: string; externalLinks: ExternalLinkInput[] }
+        | {
+            isEdit: false;
+            email: string;
+            externalLinks: ExternalLinkInput[];
+            hostGroupIds: string[];
+          }
         | {
             isEdit: true;
             email: string;
             attach: number[];
             detach: number[];
             externalLinks: ExternalLinkInput[];
+            hostGroupIds: string[];
           },
     ) => {
       if (!meta.isEdit) {
-        const createMsg = await create(payload);
+        const createPayload =
+          payload && typeof payload === 'object' && 'client' in payload
+            ? { ...payload, hostGroupIds: meta.hostGroupIds }
+            : payload;
+        const createMsg = await create(createPayload);
         if (!createMsg?.success) return createMsg;
         if (meta.email && meta.externalLinks.length > 0) {
           const r = await setExternalLinks(meta.email, meta.externalLinks);
@@ -1012,7 +1029,11 @@ export default function ClientsPage() {
         }
         return createMsg;
       }
-      const updateMsg = await update(meta.email, payload);
+      const updatePayload = {
+        ...(payload as Record<string, unknown>),
+        hostGroupIds: meta.hostGroupIds,
+      };
+      const updateMsg = await update(meta.email, updatePayload);
       if (!updateMsg?.success) return updateMsg;
       const rawEmail = (payload as { email?: unknown }).email;
       const emailKey =
@@ -1881,6 +1902,8 @@ export default function ClientsPage() {
             client={editingClient}
             attachedIds={editingAttachedIds}
             attachedExternalLinks={editingExternalLinks}
+            attachedHostGroupIds={editingHostGroupIds}
+            hosts={hosts}
             tunnelAllowedIPs={editingTunnelAllowedIPs}
             inbounds={inbounds}
             tgBotEnable={tgBotEnable}

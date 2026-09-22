@@ -45,6 +45,7 @@ export const ClientRecordSchema = z
     trafficReset: z.string().optional(),
     trafficResetDay: z.number().optional(),
     inboundIds: nullableNumberArray.optional(),
+    hostGroupIds: nullableStringArray.optional(),
     traffic: ClientTrafficSchema.nullable().optional(),
     reverse: z.object({ tag: z.string().optional() }).loose().nullable().optional(),
     privateKey: z.string().optional(),
@@ -209,6 +210,7 @@ export const ExternalLinkListSchema = z
 export const ClientHydrateSchema = z.object({
   client: ClientRecordSchema,
   inboundIds: nullableNumberArray,
+  hostGroupIds: z.array(z.string()).default([]),
   externalLinks: ExternalLinkListSchema.optional(),
   tunnelAllowedIPs: z.record(z.number().int(), z.string()).optional(),
 });
@@ -338,6 +340,7 @@ export const ClientFormSchema = z.object({
   comment: z.string(),
   enable: z.boolean(),
   inboundIds: z.array(z.number()),
+  hostGroupIds: z.array(z.string()),
 });
 
 export const ClientCreateFormSchema = ClientFormSchema.extend({
