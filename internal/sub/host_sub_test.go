@@ -499,6 +499,38 @@ func TestSub_ClientHostAssignmentFiltersHosts(t *testing.T) {
 	}
 }
 
+func TestSub_ClientHostAssignmentIsCaseInsensitive(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-host-case", "case", 4452, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "case-a", SortOrder: 1, Remark: "A", Address: "case-a.example.com", Port: 8443, Security: "tls"})
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "case-b", SortOrder: 2, Remark: "B", Address: "case-b.example.com", Port: 8443, Security: "tls"})
+
+	if err := database.GetDB().Model(&model.ClientRecord{}).
+		Where("email = ?", "case@e").
+		Update("email", "Case@E").Error; err != nil {
+		t.Fatalf("update client email: %v", err)
+	}
+	var client model.ClientRecord
+	if err := database.GetDB().Where("email = ?", "Case@E").First(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+	if err := database.GetDB().Create(&model.ClientHost{ClientId: client.Id, GroupId: "case-a"}).Error; err != nil {
+		t.Fatalf("assign host group: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-host-case", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	joined := strings.Join(links, "\n")
+	if !strings.Contains(joined, "case-a.example.com:8443") {
+		t.Fatalf("assigned host should render: %s", joined)
+	}
+	if strings.Contains(joined, "case-b.example.com:8443") {
+		t.Fatalf("unassigned host must not render for case-variant email: %s", joined)
+	}
+}
+
 func TestSub_ClientHostAssignmentDoesNotFallbackOnMissingInboundHost(t *testing.T) {
 	seedSubDB(t)
 	ib := seedSubInbound(t, "s-host", "restricted", 4451, 1, wsTLSStream)
