@@ -1,0 +1,71 @@
+name: Build Client-Host
+
+on:
+  push:
+    branches:
+      - client-host
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build x-ui
+        env:
+          CGO_ENABLED: "1"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -buildvcs=true -ldflags "-w -s -X github.com/mhsanaei/3x-ui/v3/internal/config.buildCommit=${GITHUB_SHA::8} -X github.com/mhsanaei/3x-ui/v3/internal/config.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o x-ui .
+          test -s x-ui
+          chmod +x x-ui
+          file x-ui
+          sha256sum x-ui > x-ui-linux-amd64.sha256
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: x-ui-client-host-amd64
+          path: |
+            x-ui
+            x-ui-linux-amd64.sha256
+
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view client-host >/dev/null 2>&1; then
+            gh release upload client-host x-ui x-ui-linux-amd64.sha256 --clobber
+            gh release edit client-host --notes "Rolling client-host build from commit ${GITHUB_SHA::8}. This release asset is the patched x-ui binary for Linux amd64."
+          else
+            gh release create client-host x-ui x-ui-linux-amd64.sha256 \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "3x-ui client-host (rolling)" \
+              --notes "Rolling client-host build. Current commit: ${GITHUB_SHA::8}. Linux amd64 binary only."
+          fi
