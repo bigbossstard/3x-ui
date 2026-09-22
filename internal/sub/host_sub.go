@@ -35,7 +35,7 @@ func (s *SubService) getClientHostSelection(email string) clientHostSelection {
 	if err := database.GetDB().Table("client_hosts ch").
 		Select("ch.group_id").
 		Joins("JOIN clients c ON c.id = ch.client_id").
-		Where("c.email = ?", email).
+		Where("LOWER(c.email) = ?", email).
 		Order("ch.group_id ASC").
 		Pluck("ch.group_id", &ids).Error; err != nil {
 		// The relation table is part of the panel schema and is migrated before
