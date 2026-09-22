@@ -1,0 +1,72 @@
+name: Test Client-Host on v3.8.5
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream v3.8.5
+        run: |
+          git remote add upstream https://github.com/MHSanaei/3x-ui.git
+          git fetch --tags upstream v3.8.5 main
+
+      - name: Build patched tree from original v3.8.5
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/3x-ui-v3.8.5
+          mkdir -p /tmp/3x-ui-v3.8.5
+          git archive upstream/v3.8.5 | tar -x -C /tmp/3x-ui-v3.8.5
+
+          git diff --binary 95f19b192f477b59cc368dcb7751bcf2e0180e5b..${GITHUB_SHA} -- \
+            ':!.github/workflows/*' \
+            ':!docs/client-host-assignment.md' \
+            ':!tools/update-client-host.sh' \
+            > /tmp/client-host.patch
+
+          cd /tmp/3x-ui-v3.8.5
+          if ! git apply --check /tmp/client-host.patch; then
+            echo "::error::The client-host patch does not apply cleanly to upstream v3.8.5."
+            git apply --reject --whitespace=fix /tmp/client-host.patch || true
+            find . -name '*.rej' -print
+            exit 1
+          fi
+
+          git apply --whitespace=fix /tmp/client-host.patch
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: /tmp/3x-ui-v3.8.5/go.mod
+          cache: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: /tmp/3x-ui-v3.8.5/.nvmrc
+          cache: false
+
+      - name: Go tests
+        working-directory: /tmp/3x-ui-v3.8.5
+        run: |
+          mkdir -p internal/web/dist
+          touch internal/web/dist/.gitkeep
+          go list ./... | grep -v '/frontend/node_modules/' > /tmp/go-packages.txt
+          go test -shuffle=on -count=1 $(cat /tmp/go-packages.txt)
+
+      - name: Frontend checks
+        working-directory: /tmp/3x-ui-v3.8.5/frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm run build
