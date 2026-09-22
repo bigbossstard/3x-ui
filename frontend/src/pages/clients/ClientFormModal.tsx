@@ -387,6 +387,7 @@ export default function ClientFormModal({
         comment: client.comment || '',
         enable: !!client.enable,
         inboundIds: Array.isArray(attachedIds) ? [...attachedIds] : [],
+        hostGroupIds: Array.isArray(attachedHostGroupIds) ? [...attachedHostGroupIds] : [],
         externalLinks: toExternalLinkRows(attachedExternalLinks),
         wgPrivateKey: client.privateKey || '',
         wgPublicKey: client.publicKey || '',
