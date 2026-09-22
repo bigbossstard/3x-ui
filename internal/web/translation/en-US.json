@@ -812,6 +812,8 @@
       "attachedHosts": "Attached hosts",
       "selectHost": "Select host groups",
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
+  "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
+  "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}",
       "selectInbound": "Select one or more inbounds",
       "selectAllInbounds": "Select all",
       "clearAllInbounds": "Clear all",
