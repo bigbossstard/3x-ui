@@ -1,0 +1,52 @@
+name: Upstream Sync Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout client-host
+        uses: actions/checkout@v7
+        with:
+          ref: client-host
+          fetch-depth: 0
+
+      - name: Configure upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/MHSanaei/3x-ui.git
+          git fetch upstream main
+
+      - name: Test-merge upstream main
+        run: |
+          git checkout -B automation/upstream-sync client-host
+          if ! git merge --no-edit upstream/main; then
+            git merge --abort
+            echo "::error::Upstream main conflicts with client-host. No branch was changed. Review the conflict before accepting an upstream update."
+            exit 1
+          fi
+
+      - name: Open upstream-sync PR
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: client-host
+          branch: automation/upstream-sync
+          delete-branch: true
+          title: "chore: sync client-host with upstream"
+          commit-message: "chore: sync client-host with upstream"
+          body: |
+            Automated clean-merge check against MHSanaei/3x-ui main.
+
+            This PR contains upstream changes only; the client-host feature remains on the base branch.
+
+            Merge this PR only after the feature CI and compatibility review are green.
