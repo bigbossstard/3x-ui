@@ -23,7 +23,7 @@ require_cmd() {
 }
 
 api_get() {
-  curl -fsSL     --retry 6     --retry-all-errors     --retry-delay 2     --connect-timeout 15     --speed-limit 1     --speed-time 60     -H "Accept: application/vnd.github+json"     -H "User-Agent: 3x-ui-client-host-updater"     "$1"
+  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 45     -H "Accept: application/vnd.github+json"     -H "User-Agent: 3x-ui-client-host-updater"     "$1"
 }
 
 ref_sha() {
@@ -156,8 +156,8 @@ refresh_managed_updater() {
   expected="${TMP_DIR}/update-client-host.sh.sha256"
 
   echo "Checking managed updater..."
-  curl -fsSL     --retry 6     --retry-all-errors     --retry-delay 2     --connect-timeout 15     --speed-limit 1     --speed-time 60     -o "$tmp" "${base}/update-client-host.sh"
-  curl -fsSL     --retry 6     --retry-all-errors     --retry-delay 2     --connect-timeout 15     --speed-limit 1     --speed-time 60     -o "$expected" "${base}/update-client-host.sh.sha256"
+  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 60     -o "$tmp" "${base}/update-client-host.sh"
+  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 45     -o "$expected" "${base}/update-client-host.sh.sha256"
 
   actual="$(sha256sum "$tmp" | awk '{print $1}')"
   expected_hash="$(awk '{print $1}' "$expected" | head -n1)"
@@ -195,12 +195,12 @@ update() {
   TMP_DIR="$(mktemp -d "${XUI_DIR}/.client-host-update.XXXXXX")"
   trap 'rm -rf "${TMP_DIR:-}"' EXIT
 
-  refresh_managed_updater "$target_commit"
-
   if [[ "$current_version" == "dev+${target_short}" ]]; then
     echo "Already up to date: $current_version"
     return 0
   fi
+
+  refresh_managed_updater "$target_commit"
 
   base="$(release_url "$target_commit")"
   tmp="${TMP_DIR}/x-ui"
@@ -210,8 +210,8 @@ update() {
   echo "Target commit: $target_commit"
   echo "Downloading immutable client-host release..."
 
-  curl -fsSL     --retry 6     --retry-all-errors     --retry-delay 2     --connect-timeout 15     --speed-limit 1     --speed-time 60     -o "$tmp" "${base}/x-ui"
-  curl -fsSL     --retry 6     --retry-all-errors     --retry-delay 2     --connect-timeout 15     --speed-limit 1     --speed-time 60     -o "$checksum" "${base}/x-ui-linux-amd64.sha256"
+  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 180     -o "$tmp" "${base}/x-ui"
+  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 45     -o "$checksum" "${base}/x-ui-linux-amd64.sha256"
 
   expected="$(awk '{print $1}' "$checksum" | head -n1)"
   actual="$(sha256sum "$tmp" | awk '{print $1}')"
