@@ -17,16 +17,16 @@ func TestBulkCreatePersistsClientHostAssignments(t *testing.T) {
 	if err := database.GetDB().Create(&model.Host{
 		GroupId:   "group-a",
 		InboundId: first.Id,
-		Remark:   "host-a",
-		Address:  "a.example.com",
+		Remark:    "host-a",
+		Address:   "a.example.com",
 	}).Error; err != nil {
 		t.Fatalf("create host a: %v", err)
 	}
 	if err := database.GetDB().Create(&model.Host{
 		GroupId:   "group-b",
 		InboundId: second.Id,
-		Remark:   "host-b",
-		Address:  "b.example.com",
+		Remark:    "host-b",
+		Address:   "b.example.com",
 	}).Error; err != nil {
 		t.Fatalf("create host b: %v", err)
 	}
