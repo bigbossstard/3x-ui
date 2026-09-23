@@ -14,7 +14,6 @@ on:
       - "frontend/**"
       - ".github/workflows/codeql.yml"
       - ".github/workflows/ci.yml"
-      - "tools/client-host-matrix-tester.sh"
       - "tools/update-client-host.sh"
       - "tools/install-client-host.sh"
   pull_request:
@@ -25,7 +24,6 @@ on:
       - "frontend/**"
       - ".github/workflows/codeql.yml"
       - ".github/workflows/ci.yml"
-      - "tools/client-host-matrix-tester.sh"
       - "tools/update-client-host.sh"
       - "tools/install-client-host.sh"
   schedule:

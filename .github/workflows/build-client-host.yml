@@ -14,7 +14,6 @@ on:
       - ".github/workflows/build-client-host.yml"
       - ".github/workflows/ci.yml"
       - ".github/workflows/codeql.yml"
-      - "tools/client-host-matrix-tester.sh"
       - "tools/update-client-host.sh"
       - "tools/install-client-host.sh"
   workflow_dispatch:

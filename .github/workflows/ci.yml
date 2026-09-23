@@ -24,7 +24,6 @@ on:
       - ".github/workflows/ci.yml"
       - ".github/workflows/build-client-host.yml"
       - ".github/workflows/upstream-sync.yml"
-      - "tools/client-host-matrix-tester.sh"
       - "tools/update-client-host.sh"
       - "tools/install-client-host.sh"
 
@@ -45,7 +44,6 @@ jobs:
           set -euo pipefail
           bash -n tools/update-client-host.sh
           bash -n tools/install-client-host.sh
-          bash -n tools/client-host-matrix-tester.sh
 
   go-test:
     runs-on: ubuntu-latest
