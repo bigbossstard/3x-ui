@@ -35,7 +35,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          fetch-depth: 2
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -49,6 +49,29 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Validate client-host scripts
+        run: |
+          set -euo pipefail
+          bash -n tools/update-client-host.sh
+          bash -n tools/install-client-host.sh
+          bash -n tools/xch.sh
+
+      - name: Determine release gate
+        id: gate
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          needs_full_ci=0
+          while IFS= read -r path; do
+            case "$path" in
+              *.go|go.mod|go.sum|frontend/*|.nvmrc|Makefile|.github/workflows/ci.yml|.github/workflows/codeql.yml|.github/workflows/build-client-host.yml|.github/workflows/upstream-sync.yml)
+                needs_full_ci=1
+                ;;
+            esac
+          done < <(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
+          echo "needs-full-ci=$needs_full_ci" >> "$GITHUB_OUTPUT"
+          echo "Release gate: needs_full_ci=$needs_full_ci"
 
       - name: Build frontend
         working-directory: frontend
@@ -93,7 +116,7 @@ jobs:
             xch.sh.sha256
 
       - name: Wait for full client-host CI and CodeQL
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.gate.outputs.needs-full-ci == '1'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
