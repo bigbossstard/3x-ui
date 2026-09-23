@@ -127,15 +127,15 @@ update() {
   target_commit="$(latest_commit)"
   target_short="${target_commit:0:8}"
 
-  if [[ "$current_version" == "dev+${target_short}" ]]; then
-    echo "Already up to date: $current_version"
-    return 0
-  fi
-
   TMP_DIR="$(mktemp -d "${XUI_DIR}/.client-host-update.XXXXXX")"
   trap 'rm -rf "${TMP_DIR:-}"' EXIT
 
   refresh_managed_updater "$target_commit"
+
+  if [[ "$current_version" == "dev+${target_short}" ]]; then
+    echo "Already up to date: $current_version"
+    return 0
+  fi
 
   base="$(release_url "$target_commit")"
   tmp="${TMP_DIR}/x-ui"
