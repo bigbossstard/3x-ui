@@ -1122,12 +1122,7 @@ export const sections: readonly Section[] = [
         summary:
           'Fetch one client by email, including the inbound IDs and external config IDs it is attached to.',
         params: [
-          {
-            name: 'email',
-            in: 'path',
-            type: 'string',
-            desc: 'Client email (unique identifier).',
-          },
+          { name: 'email', in: 'path', type: 'string', desc: 'Client email (unique identifier).' },
         ],
         response:
           '{\n  "success": true,\n  "obj": {\n    "client": { "id": 1, "email": "alice@example.com", ... },\n    "inboundIds": [3, 5],\n    "externalLinks": [\n      { "id": 11, "kind": "link", "value": "vless://...", "remark": "DE", "enable": true, "expiryTime": 0 },\n      { "id": 12, "kind": "subscription", "value": "https://provider.example/sub/abc", "remark": "Provider", "enable": false, "expiryTime": 1767225600000, "namePrefix": "[zjh] ", "lastFetchAt": 1767220000000, "lastFetchError": "" }\n    ]\n  }\n}',
@@ -1148,12 +1143,7 @@ export const sections: readonly Section[] = [
         summary:
           'Replace the client\'s HostGroup assignment for subscription endpoint selection. Use an empty hostGroupIds array to restore legacy behavior and include all enabled hosts from attached inbounds.',
         params: [
-          {
-            name: 'email',
-            in: 'path',
-            type: 'string',
-            desc: 'Client email (unique identifier).',
-          },
+          { name: 'email', in: 'path', type: 'string', desc: 'Client email (unique identifier).' },
           {
             name: 'hostGroupIds',
             in: 'body (json)',

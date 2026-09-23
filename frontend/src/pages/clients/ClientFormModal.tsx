@@ -599,9 +599,7 @@ export default function ClientFormModal({
           (id) => inboundById.get(id)?.enable,
         ).length;
 
-        const labelText = `${host.remark || host.groupId}${
-          host.hosts?.length ? ` — ${host.hosts.join(', ')}` : ''
-        }`;
+        const labelText = `${host.remark || host.groupId}${host.hosts?.length ? ` — ${host.hosts.join(', ')}` : ''}`;
         const disabledOnly = disabledInboundNames.length > 0 && enabledInboundCount === 0;
 
         let statusTag: ReactNode = null;
@@ -615,10 +613,7 @@ export default function ClientFormModal({
                 { inbounds: disabledInboundNames.join(', ') },
               )}
             >
-              <Tag
-                color={disabledOnly ? 'default' : 'warning'}
-                style={{ marginInlineStart: 4 }}
-              >
+              <Tag color={disabledOnly ? 'default' : 'warning'} style={{ marginInlineStart: 4 }}>
                 ⚠
               </Tag>
             </Tooltip>
@@ -1222,10 +1217,7 @@ export default function ClientFormModal({
                                 .includes(input.toLowerCase()),
                           }}
                         />
-                        <Typography.Text
-                          type="secondary"
-                          style={{ display: 'block', marginTop: 4 }}
-                        >
+                        <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
                           {t('pages.clients.hostsEmptyMeansAll')}
                         </Typography.Text>
                       </Form.Item>
