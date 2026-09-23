@@ -32,6 +32,17 @@ permissions:
   contents: read
 
 jobs:
+  client-host-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate client-host shell scripts
+        run: |
+          set -euo pipefail
+          bash -n tools/update-client-host.sh
+          bash -n tools/install-client-host.sh
+          bash -n tools/client-host-matrix-tester.sh
+
   go-test:
     runs-on: ubuntu-latest
     steps:
