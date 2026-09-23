@@ -23,6 +23,7 @@ DB_ARG=""
 BIN_ARG=""
 KEEP=${KEEP_TEST_ARTIFACTS:-0}
 ITERATIONS=${ITERATIONS:-80}
+STARTUP_ONLY=0
 
 usage() {
   cat <<'EOF'
@@ -34,6 +35,7 @@ Options:
   --binary PATH      x-ui binary to test (default: /usr/local/x-ui/x-ui)
   --iterations N     extra randomized state transitions (default: 80)
   --keep             keep the temporary test workspace
+  --startup-only     stop after panel + subscription listeners are verified
 EOF
 }
 
@@ -43,6 +45,7 @@ while (($#)); do
     --binary) BIN_ARG=${2:?missing path after --binary}; shift 2 ;;
     --iterations) ITERATIONS=${2:?missing number after --iterations}; shift 2 ;;
     --keep) KEEP=1; shift ;;
+    --startup-only) STARTUP_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -251,6 +254,11 @@ PYSET
   exit 1
 fi
 echo "[PASS] subscription listener is up on $SUB_PORT"
+
+if (( STARTUP_ONLY == 1 )); then
+  echo "[PASS] startup-only check complete"
+  exit 0
+fi
 
 python3 - "$COPY_DB" "$STATE_JSON" "$ITERATIONS" "$SUB_PORT" <<'PY'
 import base64, json, os, random, re, sqlite3, string, subprocess, sys, time
