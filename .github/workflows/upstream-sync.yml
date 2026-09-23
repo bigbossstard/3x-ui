@@ -3,21 +3,28 @@ name: Upstream Sync Check
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 4 * * 1"
+    - cron: "17 4 * * *"
 
 permissions:
   contents: write
   pull-requests: write
+  actions: read
+
+concurrency:
+  group: client-host-upstream-sync
+  cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     steps:
       - name: Checkout client-host
         uses: actions/checkout@v7
         with:
           ref: client-host
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure upstream
         run: |
@@ -28,14 +35,21 @@ jobs:
 
       - name: Test-merge upstream main
         run: |
+          set -euo pipefail
           git checkout -B automation/upstream-sync client-host
           if ! git merge --no-edit upstream/main; then
             git merge --abort
-            echo "::error::Upstream main conflicts with client-host. No branch was changed. Review the conflict before accepting an upstream update."
+            echo "::error::Upstream main conflicts with client-host. No branch was changed; refusing to guess at a feature conflict."
+            exit 1
+          fi
+          if ! git diff --check client-host...HEAD; then
+            echo "::error::The upstream merge introduced whitespace errors."
+            git diff --check client-host...HEAD
             exit 1
           fi
 
-      - name: Open upstream-sync PR
+      - name: Open or update upstream-sync PR
+        id: pr
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -45,8 +59,59 @@ jobs:
           title: "chore: sync client-host with upstream"
           commit-message: "chore: sync client-host with upstream"
           body: |
-            Automated clean-merge check against MHSanaei/3x-ui main.
+            Automated upstream merge check against MHSanaei/3x-ui main.
 
-            This PR contains upstream changes only; the client-host feature remains on the base branch.
+            This PR contains upstream changes only; client-host remains the base.
+            The automation merges it only after the full client-host CI for this exact PR head is green.
 
-            Merge this PR only after the feature CI and compatibility review are green.
+      - name: Wait for exact upstream PR CI
+        if: steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          tested_sha=""
+          for attempt in {1..180}; do
+            head_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
+            run_line="$(gh run list               --repo "$REPO"               --workflow ci.yml               --commit "$head_sha"               --limit 10               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
+
+            if [[ -n "$run_line" ]]; then
+              IFS=$'\t' read -r run_id status conclusion <<<"$run_line"
+              echo "CI run=$run_id status=$status conclusion=$conclusion"
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" != "success" ]]; then
+                  gh run view "$run_id" --repo "$REPO" --log-failed || true
+                  echo "::error::The exact upstream-sync PR head failed full CI. The PR is left open for inspection and no merge is attempted."
+                  exit 1
+                fi
+                tested_sha="$head_sha"
+                break
+              fi
+            else
+              echo "Waiting for full CI to register for PR head $head_sha..."
+            fi
+            sleep 10
+          done
+
+          [[ -n "$tested_sha" ]] || { echo "::error::Timed out waiting for full client-host CI." >&2; exit 1; }
+
+          final_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
+          [[ "$final_sha" == "$tested_sha" ]] || {
+            echo "::error::The upstream-sync PR head changed after CI passed; refusing to merge untested code."
+            exit 1
+          }
+
+          echo "Exact tested head: $tested_sha"
+
+      - name: Merge only the exact tested PR head
+        if: steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          tested_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
+          gh pr merge "$PR_NUMBER"             --repo "$REPO"             --squash             --delete-branch             --match-head-commit "$tested_sha"
