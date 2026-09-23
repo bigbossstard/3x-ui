@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - client-host
     tags-ignore:
       - "v*"
     paths:
@@ -11,12 +12,22 @@ on:
       - "go.mod"
       - "go.sum"
       - "frontend/**"
+      - ".github/workflows/codeql.yml"
+      - ".github/workflows/ci.yml"
+      - "tools/client-host-matrix-tester.sh"
+      - "tools/update-client-host.sh"
+      - "tools/install-client-host.sh"
   pull_request:
     paths:
       - "**.go"
       - "go.mod"
       - "go.sum"
       - "frontend/**"
+      - ".github/workflows/codeql.yml"
+      - ".github/workflows/ci.yml"
+      - "tools/client-host-matrix-tester.sh"
+      - "tools/update-client-host.sh"
+      - "tools/install-client-host.sh"
   schedule:
     - cron: "18 2 * * 2"
 
