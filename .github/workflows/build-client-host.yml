@@ -4,17 +4,37 @@ on:
   push:
     branches:
       - client-host
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "frontend/**"
+      - ".nvmrc"
+      - "Makefile"
+      - ".github/workflows/build-client-host.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/codeql.yml"
+      - "tools/update-client-host.sh"
+      - "tools/install-client-host.sh"
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
+
+concurrency:
+  group: client-host-release
+  cancel-in-progress: true
 
 jobs:
   build-amd64:
     runs-on: ubuntu-latest
+    timeout-minutes: 110
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -32,6 +52,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: |
+          set -euo pipefail
           npm ci
           npm run build
 
@@ -41,11 +62,18 @@ jobs:
           GOOS: linux
           GOARCH: amd64
         run: |
+          set -euo pipefail
           go build -buildvcs=true -ldflags "-w -s -X github.com/mhsanaei/3x-ui/v3/internal/config.buildCommit=${GITHUB_SHA::8} -X github.com/mhsanaei/3x-ui/v3/internal/config.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o x-ui .
           test -s x-ui
-          chmod +x x-ui
+          chmod 755 x-ui
           file x-ui
+          ./x-ui -v
           sha256sum x-ui > x-ui-linux-amd64.sha256
+          cp tools/update-client-host.sh update-client-host.sh
+          cp tools/install-client-host.sh install-client-host.sh
+          chmod 755 update-client-host.sh install-client-host.sh
+          sha256sum update-client-host.sh > update-client-host.sh.sha256
+          sha256sum install-client-host.sh > install-client-host.sh.sha256
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
@@ -54,18 +82,108 @@ jobs:
           path: |
             x-ui
             x-ui-linux-amd64.sha256
+            update-client-host.sh
+            update-client-host.sh.sha256
+            install-client-host.sh
+            install-client-host.sh.sha256
 
-      - name: Publish rolling release
+      - name: Wait for full client-host CI and CodeQL
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..540}; do
+            ci_line="$(gh run list               --repo "$REPO"               --workflow ci.yml               --commit "$COMMIT"               --limit 20               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
+            codeql_line="$(gh run list               --repo "$REPO"               --workflow codeql.yml               --commit "$COMMIT"               --limit 20               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
+            ci_ready=0
+            codeql_ready=0
+            if [[ -n "$ci_line" ]]; then
+              IFS=$'\t' read -r run_id status conclusion <<<"$ci_line"
+              echo "CI run=$run_id status=$status conclusion=$conclusion"
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" != "success" ]]; then
+                  gh run view "$run_id" --repo "$REPO" --log-failed || true
+                  echo "::error::Full client-host CI failed; release publication is blocked."
+                  exit 1
+                fi
+                ci_ready=1
+              fi
+            fi
+            if [[ -n "$codeql_line" ]]; then
+              IFS=$'\t' read -r run_id status conclusion <<<"$codeql_line"
+              echo "CodeQL run=$run_id status=$status conclusion=$conclusion"
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" != "success" ]]; then
+                  gh run view "$run_id" --repo "$REPO" --log-failed || true
+                  echo "::error::CodeQL failed; release publication is blocked."
+                  exit 1
+                fi
+                codeql_ready=1
+              fi
+            fi
+            if (( ci_ready == 1 && codeql_ready == 1 )); then
+              exit 0
+            fi
+            echo "Waiting for both full client-host CI and CodeQL on $COMMIT..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for full client-host CI + CodeQL."
+          exit 1
+
+      - name: Refuse to publish a superseded commit
+        if: github.event_name == 'push'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin refs/heads/client-host | awk '{print $1}')"
+          [[ "$remote_head" == "$GITHUB_SHA" ]] || {
+            echo "::notice::Commit $GITHUB_SHA was superseded by $remote_head before publication; skipping release."
+            exit 0
+          }
+
+      - name: Publish immutable commit release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          immutable_tag="client-host-$GITHUB_SHA"
+          notes="Immutable client-host build.
+
+          commit=$GITHUB_SHA
+          The binary updater consumes immutable assets from this release.
+          The mutable client-host-current tag is only a pointer to the latest verified release."
+          if gh release view "$immutable_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               --repo "${{ github.repository }}"               --clobber
+            gh release edit "$immutable_tag" --repo "${{ github.repository }}" --notes "$notes"
+          else
+            gh release create "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               --repo "${{ github.repository }}"               --target "$GITHUB_SHA"               --prerelease               --latest=false               --title "3x-ui client-host $GITHUB_SHA"               --notes "$notes"
+          fi
+
+      - name: Move immutable current pointer
+        if: github.event_name == 'push'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git tag -f client-host-current "$GITHUB_SHA"
+          for attempt in 1 2 3 4 5; do
+            if git push -f origin refs/tags/client-host-current; then
+              exit 0
+            fi
+            [[ "$attempt" -eq 5 ]] && exit 1
+            sleep $((attempt * 5))
+          done
+
+      - name: Trigger v3.8.5 backport build
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view client-host >/dev/null 2>&1; then
-            gh release upload client-host x-ui x-ui-linux-amd64.sha256 --clobber
-            gh release edit client-host --notes "Rolling client-host build from commit ${GITHUB_SHA::8}. This release asset is the patched x-ui binary for Linux amd64."
-          else
-            gh release create client-host x-ui x-ui-linux-amd64.sha256 \
-              --target "$GITHUB_SHA" \
-              --prerelease \
-              --title "3x-ui client-host (rolling)" \
-              --notes "Rolling client-host build. Current commit: ${GITHUB_SHA::8}. Linux amd64 binary only."
-          fi
+          set -euo pipefail
+          gh workflow run build-v385.yml --repo "${{ github.repository }}" --ref client-host-v385

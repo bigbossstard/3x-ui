@@ -171,7 +171,6 @@ func TestBulkCreate_DisabledOnNodeSkipsAddClient(t *testing.T) {
 	}
 }
 
-
 func TestExportImportPreservesClientHostAssignments(t *testing.T) {
 	setupBulkDB(t)
 	svc := &ClientService{}

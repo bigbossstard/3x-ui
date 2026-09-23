@@ -961,7 +961,6 @@ type ClientHost struct {
 
 func (ClientHost) TableName() string { return "client_hosts" }
 
-
 type ClientGroup struct {
 	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name      string `json:"name" gorm:"uniqueIndex;not null"`

@@ -13,6 +13,7 @@ on:
   push:
     branches:
       - main
+      - client-host
     paths:
       - "**.go"
       - "go.mod"
@@ -21,11 +22,29 @@ on:
       - ".nvmrc"
       - "Makefile"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/build-client-host.yml"
+      - ".github/workflows/upstream-sync.yml"
+      - "tools/update-client-host.sh"
+      - "tools/install-client-host.sh"
 
 permissions:
   contents: read
 
+concurrency:
+  group: client-host-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  client-host-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate client-host shell scripts
+        run: |
+          set -euo pipefail
+          bash -n tools/update-client-host.sh
+          bash -n tools/install-client-host.sh
+
   go-test:
     runs-on: ubuntu-latest
     steps:

@@ -18,23 +18,23 @@ import (
 // so the list payload stays compact even when the panel manages thousands
 // of clients. Modals that need the full record still call /get/:email.
 type ClientSlim struct {
-	Email      string              `json:"email" example:"alice@example.com"`
-	SubID      string              `json:"subId" example:"abcd1234"`
-	Enable     bool                `json:"enable" example:"true"`
-	TotalGB    int64               `json:"totalGB" example:"53687091200"`
-	ExpiryTime int64               `json:"expiryTime" example:"1735689600000"`
-	LimitIP    int                 `json:"limitIp" example:"0"`
-	LimitHwid  int                 `json:"limitHwid" example:"0"`
-	Reset      int                 `json:"reset" example:"0"`
-	ResetDay   int                 `json:"resetDay" example:"0"`
-	ResetMax   int                 `json:"resetMax" example:"0"`
-	Group      string              `json:"group,omitempty" example:"staff"`
-	Comment    string              `json:"comment,omitempty" example:"Primary device"`
-	InboundIds  []int              `json:"inboundIds" example:"[3,5]"`
-	HostGroupIds []string          `json:"hostGroupIds,omitempty" example:"[\"group-a\"]"`
-	Traffic     *xray.ClientTraffic `json:"traffic,omitempty"`
-	CreatedAt  int64               `json:"createdAt" example:"1735000000000"`
-	UpdatedAt  int64               `json:"updatedAt" example:"1735100000000"`
+	Email        string              `json:"email" example:"alice@example.com"`
+	SubID        string              `json:"subId" example:"abcd1234"`
+	Enable       bool                `json:"enable" example:"true"`
+	TotalGB      int64               `json:"totalGB" example:"53687091200"`
+	ExpiryTime   int64               `json:"expiryTime" example:"1735689600000"`
+	LimitIP      int                 `json:"limitIp" example:"0"`
+	LimitHwid    int                 `json:"limitHwid" example:"0"`
+	Reset        int                 `json:"reset" example:"0"`
+	ResetDay     int                 `json:"resetDay" example:"0"`
+	ResetMax     int                 `json:"resetMax" example:"0"`
+	Group        string              `json:"group,omitempty" example:"staff"`
+	Comment      string              `json:"comment,omitempty" example:"Primary device"`
+	InboundIds   []int               `json:"inboundIds" example:"[3,5]"`
+	HostGroupIds []string            `json:"hostGroupIds,omitempty" example:"[\"group-a\"]"`
+	Traffic      *xray.ClientTraffic `json:"traffic,omitempty"`
+	CreatedAt    int64               `json:"createdAt" example:"1735000000000"`
+	UpdatedAt    int64               `json:"updatedAt" example:"1735100000000"`
 }
 
 // ClientPageParams are the query params accepted by /panel/api/clients/list/paged.
@@ -612,23 +612,23 @@ func sqlInt(v int64) string {
 
 func toClientSlim(c ClientWithAttachments) ClientSlim {
 	return ClientSlim{
-		Email:      c.Email,
-		SubID:      c.SubID,
-		Enable:     c.Enable,
-		TotalGB:    c.TotalGB,
-		ExpiryTime: c.ExpiryTime,
-		LimitIP:    c.LimitIP,
-		LimitHwid:  c.LimitHwid,
-		Reset:      c.Reset,
-		ResetDay:   c.ResetDay,
-		ResetMax:   c.ResetMax,
-		Group:      c.Group,
-		Comment:    c.Comment,
-		InboundIds:  c.InboundIds,
+		Email:        c.Email,
+		SubID:        c.SubID,
+		Enable:       c.Enable,
+		TotalGB:      c.TotalGB,
+		ExpiryTime:   c.ExpiryTime,
+		LimitIP:      c.LimitIP,
+		LimitHwid:    c.LimitHwid,
+		Reset:        c.Reset,
+		ResetDay:     c.ResetDay,
+		ResetMax:     c.ResetMax,
+		Group:        c.Group,
+		Comment:      c.Comment,
+		InboundIds:   c.InboundIds,
 		HostGroupIds: c.HostGroupIds,
-		Traffic:     c.Traffic,
-		CreatedAt:  c.CreatedAt,
-		UpdatedAt:  c.UpdatedAt,
+		Traffic:      c.Traffic,
+		CreatedAt:    c.CreatedAt,
+		UpdatedAt:    c.UpdatedAt,
 	}
 }
 

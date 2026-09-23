@@ -1188,7 +1188,7 @@ export default function ClientFormModal({
                           listHeight={220}
                           showSearch={{
                             filterOption: (input, option) =>
-                              ((option?.label as string) || '')
+                              String(option?.title ?? '')
                                 .toLowerCase()
                                 .includes(input.toLowerCase()),
                           }}
@@ -1212,12 +1212,15 @@ export default function ClientFormModal({
                           listHeight={220}
                           showSearch={{
                             filterOption: (input, option) =>
-                              ((option?.label as string) || '')
+                              String(option?.label ?? '')
                                 .toLowerCase()
                                 .includes(input.toLowerCase()),
                           }}
                         />
-                        <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+                        <Typography.Text
+                          type="secondary"
+                          style={{ display: 'block', marginTop: 4 }}
+                        >
                           {t('pages.clients.hostsEmptyMeansAll')}
                         </Typography.Text>
                       </Form.Item>

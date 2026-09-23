@@ -471,7 +471,6 @@ func TestSub_HostCipherSuitesJSON(t *testing.T) {
 	}
 }
 
-
 func TestSub_ClientHostAssignmentFiltersHosts(t *testing.T) {
 	seedSubDB(t)
 	ib := seedSubInbound(t, "s-host", "client", 4450, 1, wsTLSStream)
@@ -552,4 +551,3 @@ func TestSub_ClientHostAssignmentDoesNotFallbackOnMissingInboundHost(t *testing.
 		t.Fatalf("restricted client with no matching Host must not fall back to the inbound link: %v", links)
 	}
 }
-
