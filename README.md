@@ -8,10 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MHSanaei/3x-ui/releases"><img src="https://img.shields.io/github/v/release/mhsanaei/3x-ui" alt="Release"></a>
-  <a href="https://github.com/MHSanaei/3x-ui/actions"><img src="https://img.shields.io/github/actions/workflow/status/mhsanaei/3x-ui/release.yml.svg" alt="Build"></a>
-  <a href="#"><img src="https://img.shields.io/github/go-mod/go-version/mhsanaei/3x-ui.svg" alt="GO Version"></a>
-  <a href="https://github.com/MHSanaei/3x-ui/releases/latest"><img src="https://img.shields.io/github/downloads/mhsanaei/3x-ui/total.svg" alt="Downloads"></a>
+  <a href="https://github.com/bigbossstard/3x-ui/actions/workflows/build-client-host.yml"><img src="https://img.shields.io/github/actions/workflow/status/bigbossstard/3x-ui/build-client-host.yml?branch=client-host&label=client-host%20build" alt="Client-Host Build"></a>
+  <a href="https://github.com/bigbossstard/3x-ui/tree/client-host"><img src="https://img.shields.io/badge/branch-client--host-0f766e" alt="Client-Host Branch"></a>
+  <a href="https://github.com/MHSanaei/3x-ui"><img src="https://img.shields.io/badge/base-upstream%203X--UI-64748b" alt="Upstream 3X-UI"></a>
   <a href="https://www.gnu.org/licenses/gpl-3.0.en.html"><img src="https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true" alt="License"></a>
   <a href="https://pkg.go.dev/github.com/mhsanaei/3x-ui/v3"><img src="https://pkg.go.dev/badge/github.com/mhsanaei/3x-ui/v3.svg" alt="Go Reference"></a>
   <a href="https://docs.sanaei.dev"><img src="https://img.shields.io/badge/docs-docs.sanaei.dev-22d3ee" alt="Documentation"></a>
@@ -21,7 +20,7 @@
 
 Built as an enhanced fork of the original X-UI project, 3X-UI adds broader protocol support, improved stability, per-client traffic accounting, and many quality-of-life features.
 
-> [!IMPORTANT]
+> [!NOTE]
 > This repository keeps the upstream 3X-UI project on `main` and maintains the Client-Host patch on the `client-host` branch.
 > The patch adds per-client Host assignment while preserving the existing client → inbound model.
 
