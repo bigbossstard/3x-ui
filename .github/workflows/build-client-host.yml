@@ -71,7 +71,7 @@ jobs:
             esac
           done < <(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")
           echo "needs-full-ci=$needs_full_ci" >> "$GITHUB_OUTPUT"
-          echo "Release gate: needs_full_ci=$needs_full_ci (source/test/frontend changes only)"
+          echo "Release gate: needs_full_ci=$needs_full_ci (source/test/frontend changes only; release workflow changes use fast path)"
 
       - name: Build frontend
         working-directory: frontend
