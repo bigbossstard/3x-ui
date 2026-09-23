@@ -1,0 +1,28 @@
+name: One-off repository cleanup
+
+on:
+  push:
+    branches: [client-host]
+    paths:
+      - .github/workflows/repo-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete obsolete branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for branch in \
+            "automation/format-probe" \
+            "automation/gofumpt-probe" \
+            "automation/swiss-clock-hardening" \
+            "client-host-v385"; do
+            echo "Deleting $branch..."
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" --delete "$branch"
+          done
