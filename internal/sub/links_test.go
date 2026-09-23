@@ -98,7 +98,6 @@ func TestLinksForClient_UsesClientsTableUUIDWhenSettingsStale(t *testing.T) {
 	}
 }
 
-
 func TestLinksForClient_RespectsClientHostAssignments(t *testing.T) {
 	seedSubDB(t)
 	inbound := seedSubInbound(t, "s-host-link", "host-link", 4434, 1, `{"network":"tcp","security":"none"}`)
