@@ -10,7 +10,6 @@ on:
       - ".nvmrc"
       - "Makefile"
       - ".github/workflows/ci.yml"
-      - ".github/workflows/build-client-host.yml"
       - ".github/workflows/upstream-sync.yml"
   push:
     branches:

@@ -65,7 +65,7 @@ jobs:
           needs_full_ci=0
           while IFS= read -r path; do
             case "$path" in
-              *.go|go.mod|go.sum|frontend/*|.nvmrc|Makefile|.github/workflows/ci.yml|.github/workflows/codeql.yml|.github/workflows/build-client-host.yml|.github/workflows/upstream-sync.yml)
+              *.go|go.mod|go.sum|frontend/*|.nvmrc|Makefile|.github/workflows/ci.yml|.github/workflows/codeql.yml.github/workflows/upstream-sync.yml)
                 needs_full_ci=1
                 ;;
             esac
