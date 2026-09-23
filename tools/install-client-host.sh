@@ -115,6 +115,8 @@ systemctl daemon-reload
 echo
 echo "client-host manager installed: $MANAGER"
 echo "Automatic updates: disabled."
-echo "Run 'xch' to open the menu."
+echo "Applying the current Client-Host release..."
+echo
+"$MANAGED_UPDATER" update
 echo
 exec "$MANAGER"
