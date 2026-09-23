@@ -63,6 +63,18 @@ wait_for_service() {
   return 1
 }
 
+prune_backups() {
+  local -a old_backups=()
+  mapfile -t old_backups < <(
+    find "$BACKUP_DIR" -maxdepth 1 -type f -name 'x-ui.*' -printf '%f\n' 2>/dev/null |
+      sort -r |
+      tail -n +6
+  )
+  if (( ${#old_backups[@]} )); then
+    rm -f -- "${old_backups[@]}"
+  fi
+}
+
 rollback() {
   mkdir -p "$BACKUP_DIR"
   local backup_name backup
@@ -178,6 +190,7 @@ update() {
   echo "Version reported by binary: $("$XUI_BIN" -v 2>/dev/null || true)"
   echo "Target commit: $target_commit"
   echo "Database/config were not replaced."
+  prune_backups
 }
 
 case "${1:-update}" in
