@@ -7,6 +7,8 @@ CURRENT_REF_URL="${API_URL}/git/ref/tags/client-host-current"
 HEAD_REF_URL="${API_URL}/git/ref/heads/client-host"
 MANAGED_UPDATER="/usr/local/sbin/update-client-host"
 MANAGER="/usr/local/bin/xch"
+ORIGINAL_BACKUP="/usr/local/x-ui/.client-host-original-x-ui"
+ORIGINAL_BACKUP_SHA256="${ORIGINAL_BACKUP}.sha256"
 SERVICE_UNIT="/etc/systemd/system/x-ui-client-host-update.service"
 TIMER_UNIT="/etc/systemd/system/x-ui-client-host-update.timer"
 
@@ -49,6 +51,21 @@ require_cmd systemctl
 [[ -x /usr/local/x-ui/x-ui ]] ||
   die "/usr/local/x-ui/x-ui not found. This installer is for an existing 3x-ui node."
 systemctl cat x-ui >/dev/null 2>&1 || die "systemd service x-ui not found."
+
+current_version="$("/usr/local/x-ui/x-ui" -v 2>/dev/null || echo unknown)"
+if [[ -e "$ORIGINAL_BACKUP" || -e "$ORIGINAL_BACKUP_SHA256" ]]; then
+  [[ -s "$ORIGINAL_BACKUP" && -s "$ORIGINAL_BACKUP_SHA256" ]] ||
+    die "Existing original 3x-ui backup is incomplete."
+  expected_original="$(awk '{print $1}' "$ORIGINAL_BACKUP_SHA256" | head -n1)"
+  actual_original="$(sha256sum "$ORIGINAL_BACKUP" | awk '{print $1}')"
+  [[ -n "$expected_original" && "$actual_original" == "$expected_original" ]] ||
+    die "Existing original 3x-ui backup SHA256 verification failed."
+else
+  [[ "$current_version" != dev+* ]] ||
+    die "A client-host style dev+ binary is already installed, but no original 3x-ui backup exists. Restore the original 3x-ui binary before installing Client-Host."
+  install -m 755 /usr/local/x-ui/x-ui "$ORIGINAL_BACKUP"
+  sha256sum "$ORIGINAL_BACKUP" > "$ORIGINAL_BACKUP_SHA256"
+fi
 
 tmp_dir="$(mktemp -d /tmp/client-host-installer.XXXXXX)"
 trap 'rm -rf "${tmp_dir:-}"' EXIT
