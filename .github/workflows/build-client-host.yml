@@ -158,36 +158,6 @@ jobs:
               --notes "$notes"
           fi
 
-      - name: Publish rolling release for humans
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          notes="Rolling client-host build from commit $GITHUB_SHA.
-
-          immutable_tag=client-host-$GITHUB_SHA
-
-          The binary updater does not consume this rolling asset; it uses the immutable release above."
-          if gh release view client-host --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload client-host \
-              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
-              install-client-host.sh install-client-host.sh.sha256 \
-              --repo "${{ github.repository }}" --clobber
-            gh release edit client-host --repo "${{ github.repository }}" --notes "$notes"
-          else
-            gh release create client-host \
-              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
-              install-client-host.sh install-client-host.sh.sha256 \
-              --repo "${{ github.repository }}" \
-              --target "$GITHUB_SHA" \
-              --prerelease \
-              --latest=false \
-              --title "3x-ui client-host (rolling)" \
-              --notes "$notes"
-          fi
-
       - name: Move immutable current pointer
         if: github.event_name == 'push'
         env:
