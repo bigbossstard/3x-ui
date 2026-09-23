@@ -8,6 +8,7 @@ ORIGINAL_BACKUP="${XUI_DIR}/.client-host-original-x-ui"
 ORIGINAL_BACKUP_SHA256="${ORIGINAL_BACKUP}.sha256"
 LOCK_FILE="${XUI_DIR}/.client-host-update.lock"
 MANAGED_UPDATER="/usr/local/sbin/update-client-host"
+MANAGER="/usr/local/bin/xch"
 REPO="bigbossstard/3x-ui"
 API_URL="https://api.github.com/repos/${REPO}"
 CURRENT_REF_URL="${API_URL}/git/ref/tags/client-host-current"
@@ -146,22 +147,27 @@ rollback() {
   echo "Rollback completed."
 }
 
-refresh_managed_updater() {
-  local target_commit="$1" base self_path tmp expected expected_hash actual
-  self_path="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
+refresh_managed_tools() {
+  local target_commit="$1" raw_url assets_url self_path tmp expected_hash actual
+  self_path="$(readlink -f "$0" 2>/dev/null || printf "%s" "$0")"
   [[ "$self_path" == "$MANAGED_UPDATER" ]] || return 0
 
-  base="$(release_url "$target_commit")"
+  assets_url="${API_URL}/releases/tags/client-host-${target_commit}/assets?per_page=100"
+  echo "Checking managed client-host tools..."
+  expected_hash="$(api_get "$assets_url" |
+    grep -oE '"name"[[:space:]]*:[[:space:]]*"update-client-host\.sh"[^}]*"digest"[[:space:]]*:[[:space:]]*"sha256:[0-9a-fA-F]{64}"' |
+    grep -oE "sha256:[0-9a-fA-F]{64}" |
+    head -n1 |
+    cut -d: -f2 || true)"
+  [[ "$expected_hash" =~ ^[0-9a-fA-F]{64}$ ]] || die "Could not resolve updater digest from the immutable release."
+
   tmp="${TMP_DIR}/update-client-host.sh"
-  expected="${TMP_DIR}/update-client-host.sh.sha256"
-
-  echo "Checking managed updater..."
-  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 60     -o "$tmp" "${base}/update-client-host.sh"
-  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 45     -o "$expected" "${base}/update-client-host.sh.sha256"
-
+  raw_url="https://raw.githubusercontent.com/${REPO}/${target_commit}/tools/update-client-host.sh"
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30
+    --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60
+    -o "$tmp" "$raw_url"
   actual="$(sha256sum "$tmp" | awk '{print $1}')"
-  expected_hash="$(awk '{print $1}' "$expected" | head -n1)"
-  [[ -n "$expected_hash" && "$actual" == "$expected_hash" ]] || die "Updater SHA256 verification failed."
+  [[ "$actual" == "$expected_hash" ]] || die "Updater SHA256 does not match immutable release."
 
   if ! cmp -s "$tmp" "$MANAGED_UPDATER"; then
     echo "Installing newer managed updater..."
@@ -170,7 +176,6 @@ refresh_managed_updater() {
     exec "$MANAGED_UPDATER" update
   fi
 }
-
 update() {
   [[ "$EUID" -eq 0 ]] || die "Run as root."
   [[ "$(uname -m)" == "x86_64" ]] || die "This updater currently supports only x86_64."
@@ -200,7 +205,7 @@ update() {
     return 0
   fi
 
-  refresh_managed_updater "$target_commit"
+  refresh_managed_tools "$target_commit"
 
   base="$(release_url "$target_commit")"
   tmp="${TMP_DIR}/x-ui"
