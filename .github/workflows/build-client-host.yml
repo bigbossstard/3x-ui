@@ -19,7 +19,7 @@ on:
 
 permissions:
   contents: write
-  actions: write
+  actions: read
 
 concurrency:
   group: client-host-release
@@ -63,7 +63,7 @@ jobs:
           needs_full_ci=0
           while IFS= read -r path; do
             case "$path" in
-              *.go|go.mod|go.sum|frontend/*|.nvmrc|Makefile|.github/workflows/ci.yml|.github/workflows/codeql.yml.github/workflows/upstream-sync.yml)
+              *.go|go.mod|go.sum|frontend/*|.nvmrc|Makefile|.github/workflows/ci.yml|.github/workflows/codeql.yml|.github/workflows/upstream-sync.yml)
                 needs_full_ci=1
                 ;;
             esac
@@ -220,11 +220,3 @@ jobs:
             echo "::error::client-host-current did not move to the published commit."
             exit 1
           }
-
-      - name: Trigger v3.8.5 backport build
-        if: github.event_name == 'push' && steps.publication_gate.outputs.publish == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh workflow run build-v385.yml --repo "${{ github.repository }}" --ref client-host-v385
