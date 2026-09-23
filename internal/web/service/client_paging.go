@@ -30,8 +30,9 @@ type ClientSlim struct {
 	ResetMax   int                 `json:"resetMax" example:"0"`
 	Group      string              `json:"group,omitempty" example:"staff"`
 	Comment    string              `json:"comment,omitempty" example:"Primary device"`
-	InboundIds []int               `json:"inboundIds" example:"[3,5]"`
-	Traffic    *xray.ClientTraffic `json:"traffic,omitempty"`
+	InboundIds  []int              `json:"inboundIds" example:"[3,5]"`
+	HostGroupIds []string          `json:"hostGroupIds,omitempty" example:"[\"group-a\"]"`
+	Traffic     *xray.ClientTraffic `json:"traffic,omitempty"`
 	CreatedAt  int64               `json:"createdAt" example:"1735000000000"`
 	UpdatedAt  int64               `json:"updatedAt" example:"1735100000000"`
 }
@@ -441,6 +442,18 @@ func (q clientQuery) pageRows(params ClientPageParams, onlines []string, offset,
 		attachments[l.ClientId] = append(attachments[l.ClientId], l.InboundId)
 	}
 
+	var clientHosts []model.ClientHost
+	if err := q.db.Where("client_id IN ?", ids).Order("client_id ASC, group_id ASC").Find(&clientHosts).Error; err != nil {
+		return nil, err
+	}
+	hostGroups := make(map[int][]string, len(ids))
+	for _, ch := range clientHosts {
+		if ch.GroupId == "" {
+			continue
+		}
+		hostGroups[ch.ClientId] = append(hostGroups[ch.ClientId], ch.GroupId)
+	}
+
 	trafficByEmail := make(map[string]*xray.ClientTraffic, len(emails))
 	if len(emails) > 0 {
 		var stats []xray.ClientTraffic
@@ -462,6 +475,7 @@ func (q clientQuery) pageRows(params ClientPageParams, onlines []string, offset,
 		items = append(items, toClientSlim(ClientWithAttachments{
 			ClientRecord: *rec,
 			InboundIds:   attachments[rec.Id],
+			HostGroupIds: hostGroups[rec.Id],
 			Traffic:      trafficByEmail[rec.Email],
 		}))
 	}
@@ -610,8 +624,9 @@ func toClientSlim(c ClientWithAttachments) ClientSlim {
 		ResetMax:   c.ResetMax,
 		Group:      c.Group,
 		Comment:    c.Comment,
-		InboundIds: c.InboundIds,
-		Traffic:    c.Traffic,
+		InboundIds:  c.InboundIds,
+		HostGroupIds: c.HostGroupIds,
+		Traffic:     c.Traffic,
 		CreatedAt:  c.CreatedAt,
 		UpdatedAt:  c.UpdatedAt,
 	}
