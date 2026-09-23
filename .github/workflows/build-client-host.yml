@@ -211,12 +211,8 @@ jobs:
             exit 1
           }
 
-          git push --atomic \
-            --force-with-lease="refs/heads/client-host:$GITHUB_SHA" \
-            --force-with-lease="refs/tags/client-host-current:$current_pointer" \
-            origin \
-            "refs/heads/client-host:$GITHUB_SHA" \
-            "refs/tags/client-host-current:$GITHUB_SHA"
+          git tag -f client-host-current "$GITHUB_SHA"
+          git push --force-with-lease="refs/tags/client-host-current:$current_pointer" origin refs/tags/client-host-current
 
           published_pointer="$(git ls-remote origin refs/tags/client-host-current | awk '{print $1}')"
           [[ "$published_pointer" == "$GITHUB_SHA" ]] || {
