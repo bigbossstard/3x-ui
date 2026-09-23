@@ -14,8 +14,8 @@ CURRENT_REF_URL="${API_URL}/git/ref/tags/client-host-current"
 HEAD_REF_URL="${API_URL}/git/ref/heads/client-host"
 
 api_get() {
-  curl -fsSL --retry 6 --retry-all-errors --retry-delay 2 \
-    --connect-timeout 15 --speed-limit 1 --speed-time 60 \
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
+    --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 45 \
     -H "Accept: application/vnd.github+json" \
     -H "User-Agent: 3x-ui-client-host-manager" "$1"
 }
