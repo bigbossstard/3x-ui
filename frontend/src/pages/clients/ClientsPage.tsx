@@ -92,7 +92,7 @@ const BulkAttachInboundsModal = lazy(() => import('./BulkAttachInboundsModal'));
 const BulkDetachInboundsModal = lazy(() => import('./BulkDetachInboundsModal'));
 const TextModal = lazy(() => import('@/components/feedback/TextModal'));
 const PromptModal = lazy(() => import('@/components/feedback/PromptModal'));
-import { ClientInboundChips, ClientRowActions } from './RowCells';
+import { ClientHostChips, ClientInboundChips, ClientRowActions } from './RowCells';
 import { emptyFilters, activeFilterCount } from './filters';
 import type { ClientFilters } from './filters';
 import './ClientsPage.css';
@@ -219,6 +219,7 @@ const INBOUND_CHIP_LIMIT = 1;
 // A shared empty array keeps the memoised chip cell from seeing a fresh prop for
 // every unattached client on every render.
 const EMPTY_INBOUND_IDS: number[] = [];
+const EMPTY_HOST_GROUP_IDS: string[] = [];
 
 function readFilterState(): PersistedFilterState {
   try {
@@ -555,6 +556,29 @@ export default function ClientsPage() {
     for (const ib of inbounds) out[ib.id] = ib;
     return out;
   }, [inbounds]);
+
+  const hostsByGroupId = useMemo(() => {
+    const out: Record<string, (typeof hosts)[number]> = {};
+    for (const host of hosts) {
+      if (!host.groupId) continue;
+      const existing = out[host.groupId];
+      if (!existing) {
+        out[host.groupId] = {
+          ...host,
+          inboundIds: [...(host.inboundIds || [])],
+          hosts: [...(host.hosts || [])],
+        };
+        continue;
+      }
+      out[host.groupId] = {
+        ...existing,
+        remark: existing.remark || host.remark,
+        inboundIds: [...new Set([...(existing.inboundIds || []), ...(host.inboundIds || [])])],
+        hosts: [...new Set([...(existing.hosts || []), ...(host.hosts || [])])],
+      };
+    }
+    return out;
+  }, [hosts]);
 
   const protocolOptions = useMemo(() => {
     const values = new Set<string>(
@@ -1183,6 +1207,19 @@ export default function ClientsPage() {
         },
       },
       {
+        title: t('pages.clients.attachedHosts'),
+        key: 'hostGroupIds',
+        width: 230,
+        render: (_v, record) => (
+          <ClientHostChips
+            groupIds={record.hostGroupIds || EMPTY_HOST_GROUP_IDS}
+            hostsByGroupId={hostsByGroupId}
+            inboundsById={inboundsById}
+            chipLimit={2}
+          />
+        ),
+      },
+      {
         title: t('pages.clients.traffic'),
         key: 'traffic',
         width: 300,
@@ -1244,6 +1281,7 @@ export default function ClientsPage() {
       datepicker,
       trafficDiff,
       clientSpeed,
+      hostsByGroupId,
     ],
   );
 
@@ -1864,6 +1902,14 @@ export default function ClientsPage() {
                                     </div>
                                   </div>
                                   <ClientCardComment comment={row.comment} />
+                                  <div style={{ marginTop: 4 }}>
+                                    <ClientHostChips
+                                      groupIds={row.hostGroupIds || EMPTY_HOST_GROUP_IDS}
+                                      hostsByGroupId={hostsByGroupId}
+                                      inboundsById={inboundsById}
+                                      chipLimit={2}
+                                    />
+                                  </div>
                                   <ClientTrafficCell
                                     compact
                                     up={row.traffic?.up}
