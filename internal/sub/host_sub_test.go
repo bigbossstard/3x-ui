@@ -551,4 +551,3 @@ func TestSub_ClientHostAssignmentDoesNotFallbackOnMissingInboundHost(t *testing.
 		t.Fatalf("restricted client with no matching Host must not fall back to the inbound link: %v", links)
 	}
 }
-
