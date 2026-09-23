@@ -1188,7 +1188,7 @@ export default function ClientFormModal({
                           listHeight={220}
                           showSearch={{
                             filterOption: (input, option) =>
-                              ((option?.label as string) || '')
+                              String(option?.label ?? '')
                                 .toLowerCase()
                                 .includes(input.toLowerCase()),
                           }}
