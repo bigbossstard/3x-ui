@@ -4,6 +4,8 @@ set -euo pipefail
 XUI_DIR="/usr/local/x-ui"
 XUI_BIN="${XUI_DIR}/x-ui"
 BACKUP_DIR="${XUI_DIR}/.client-host-backups"
+ORIGINAL_BACKUP="${XUI_DIR}/.client-host-original-x-ui"
+ORIGINAL_BACKUP_SHA256="${ORIGINAL_BACKUP}.sha256"
 LOCK_FILE="${XUI_DIR}/.client-host-update.lock"
 MANAGED_UPDATER="/usr/local/sbin/update-client-host"
 REPO="bigbossstard/3x-ui"
@@ -61,6 +63,57 @@ wait_for_service() {
     sleep 1
   done
   return 1
+}
+
+uninstall() {
+  [[ "$EUID" -eq 0 ]] || die "Run as root."
+  [[ -x "$XUI_BIN" ]] || die "$XUI_BIN not found."
+  systemctl cat x-ui >/dev/null 2>&1 || die "systemd service x-ui not found."
+  require_cmd sha256sum
+  require_cmd install
+  require_cmd systemctl
+  require_cmd flock
+  require_cmd awk
+  require_cmd head
+
+  [[ -s "$ORIGINAL_BACKUP" && -s "$ORIGINAL_BACKUP_SHA256" ]] ||
+    die "Original 3x-ui binary backup not found. Refusing to uninstall without a saved pre-client-host binary."
+
+  local expected actual current_backup current_version timestamp
+  expected="$(awk '{print $1}' "$ORIGINAL_BACKUP_SHA256" | head -n1)"
+  actual="$(sha256sum "$ORIGINAL_BACKUP" | awk '{print $1}')"
+  [[ -n "$expected" && "$actual" == "$expected" ]] ||
+    die "Original 3x-ui backup SHA256 verification failed."
+
+  exec 9>"$LOCK_FILE"
+  flock -n 9 || die "Another client-host operation is already running."
+
+  mkdir -p "$BACKUP_DIR"
+  current_version="$("$XUI_BIN" -v 2>/dev/null || echo unknown)"
+  timestamp="$(date -u +%Y%m%d-%H%M%S-%N)"
+  current_backup="${BACKUP_DIR}/x-ui.uninstall-${timestamp}"
+  cp -a "$XUI_BIN" "$current_backup"
+
+  echo "Restoring original 3x-ui binary..."
+  echo "Current patched version: $current_version"
+  echo "Original backup: $ORIGINAL_BACKUP"
+
+  systemctl stop x-ui || die "Failed to stop x-ui."
+  install -m 755 "$ORIGINAL_BACKUP" "$XUI_BIN"
+  systemctl start x-ui || true
+
+  if ! wait_for_service; then
+    echo "Original binary failed to become active. Restoring previous binary..."
+    systemctl stop x-ui || true
+    install -m 755 "$current_backup" "$XUI_BIN"
+    systemctl start x-ui || true
+    wait_for_service || true
+    die "Uninstall rolled back automatically; client-host remains installed."
+  fi
+
+  echo "Original 3x-ui binary is running."
+  echo "Version reported by binary: $("$XUI_BIN" -v 2>/dev/null || true)"
+  echo "Database/config were not replaced."
 }
 
 prune_backups() {
@@ -195,6 +248,9 @@ update() {
 
 case "${1:-update}" in
   update) update ;;
+  uninstall)
+    uninstall
+    ;;
   rollback)
     [[ "$EUID" -eq 0 ]] || die "Run as root."
     require_cmd flock
