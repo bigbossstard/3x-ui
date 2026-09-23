@@ -15,7 +15,7 @@ func TestBulkCreatePersistsClientHostAssignments(t *testing.T) {
 	first := mkInbound(t, 41501, model.VLESS, `{"clients":[]}`)
 	second := mkInbound(t, 41502, model.VLESS, `{"clients":[]}`)
 	if err := database.GetDB().Create(&model.Host{
-		GroupId:  "group-a",
+		GroupId:   "group-a",
 		InboundId: first.Id,
 		Remark:   "host-a",
 		Address:  "a.example.com",
@@ -23,7 +23,7 @@ func TestBulkCreatePersistsClientHostAssignments(t *testing.T) {
 		t.Fatalf("create host a: %v", err)
 	}
 	if err := database.GetDB().Create(&model.Host{
-		GroupId:  "group-b",
+		GroupId:   "group-b",
 		InboundId: second.Id,
 		Remark:   "host-b",
 		Address:  "b.example.com",
