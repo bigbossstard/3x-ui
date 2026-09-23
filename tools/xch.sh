@@ -11,7 +11,6 @@ BACKUP_DIR="/usr/local/x-ui/.client-host-backups"
 REPO="bigbossstard/3x-ui"
 API_URL="https://api.github.com/repos/${REPO}"
 CURRENT_REF_URL="${API_URL}/git/ref/tags/client-host-current"
-HEAD_REF_URL="${API_URL}/git/ref/heads/client-host"
 
 api_get() {
   curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
@@ -62,16 +61,15 @@ status_view() {
 
   if [[ -x "$UPDATER" ]]; then
     pointer="$(ref_sha "$CURRENT_REF_URL" || true)"
-    head="$(ref_sha "$HEAD_REF_URL" || true)"
-    if [[ -n "$pointer" && -n "$head" && "$pointer" == "$head" ]]; then
-      echo "Текущий client-host : ${pointer:0:12}"
+    if [[ -n "$pointer" ]]; then
+      echo "Последний release   : ${pointer:0:12}"
       if [[ -n "${installed:-}" && "$installed" == "dev+${pointer:0:8}" ]]; then
         echo "Статус обновления   : АКТУАЛЬНО"
       else
         echo "Статус обновления   : ДОСТУПНО ОБНОВЛЕНИЕ"
       fi
     else
-      echo "Статус release      : не синхронизирован"
+      echo "Статус release      : недоступен"
     fi
   else
     echo "Updater             : не установлен"
