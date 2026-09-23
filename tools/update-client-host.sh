@@ -12,7 +12,6 @@ MANAGER="/usr/local/bin/xch"
 REPO="bigbossstard/3x-ui"
 API_URL="https://api.github.com/repos/${REPO}"
 CURRENT_REF_URL="${API_URL}/git/ref/tags/client-host-current"
-HEAD_REF_URL="${API_URL}/git/ref/heads/client-host"
 
 die() {
   echo "ERROR: $*" >&2
@@ -36,18 +35,10 @@ ref_sha() {
 }
 
 latest_commit() {
-  local pointer head attempt
-  for attempt in {1..12}; do
-    pointer="$(ref_sha "$CURRENT_REF_URL" || true)"
-    head="$(ref_sha "$HEAD_REF_URL" || true)"
-    if [[ -n "$pointer" && -n "$head" && "$pointer" == "$head" ]]; then
-      printf '%s\n' "$head"
-      return 0
-    fi
-    echo "Release pointer is not synchronized with client-host yet; retrying ($attempt/12)..."
-    sleep 10
-  done
-  die "GitHub release pointer is not synchronized with the client-host branch. Refusing to install a stale build."
+  local pointer
+  pointer="$(ref_sha "$CURRENT_REF_URL" || true)"
+  [[ -n "$pointer" ]] || die "Could not resolve the current client-host release pointer."
+  printf '%s\n' "$pointer"
 }
 
 release_url() {
