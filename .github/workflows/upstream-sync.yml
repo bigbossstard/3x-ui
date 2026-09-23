@@ -65,6 +65,7 @@ jobs:
             The automation merges it only after the full client-host CI for this exact PR head is green.
 
       - name: Wait for exact upstream PR CI
+        id: wait-ci
         if: steps.pr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -104,6 +105,7 @@ jobs:
           }
 
           echo "Exact tested head: $tested_sha"
+          echo "sha=$tested_sha" >> "$GITHUB_OUTPUT"
 
       - name: Merge only the exact tested PR head
         if: steps.pr.outputs.pull-request-number != ''
