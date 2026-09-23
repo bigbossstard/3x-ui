@@ -12,18 +12,12 @@ on:
       - "go.mod"
       - "go.sum"
       - "frontend/**"
-      - ".github/workflows/codeql.yml"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/upstream-sync.yml"
   pull_request:
     paths:
       - "**.go"
       - "go.mod"
       - "go.sum"
       - "frontend/**"
-      - ".github/workflows/codeql.yml"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/upstream-sync.yml"
   schedule:
     - cron: "18 2 * * 2"
 
@@ -37,6 +31,7 @@ jobs:
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     env:
       CODEQL_ACTION_FILE_COVERAGE_ON_PRS: true
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     permissions:
       security-events: write
       packages: read
