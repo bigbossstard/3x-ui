@@ -16,6 +16,7 @@ on:
       - ".github/workflows/codeql.yml"
       - "tools/update-client-host.sh"
       - "tools/install-client-host.sh"
+      - "tools/xch.sh"
   workflow_dispatch:
 
 permissions:
@@ -71,9 +72,11 @@ jobs:
           sha256sum x-ui > x-ui-linux-amd64.sha256
           cp tools/update-client-host.sh update-client-host.sh
           cp tools/install-client-host.sh install-client-host.sh
-          chmod 755 update-client-host.sh install-client-host.sh
+          cp tools/xch.sh xch.sh
+          chmod 755 update-client-host.sh install-client-host.sh xch.sh
           sha256sum update-client-host.sh > update-client-host.sh.sha256
           sha256sum install-client-host.sh > install-client-host.sh.sha256
+          sha256sum xch.sh > xch.sh.sha256
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
@@ -86,6 +89,8 @@ jobs:
             update-client-host.sh.sha256
             install-client-host.sh
             install-client-host.sh.sha256
+            xch.sh
+            xch.sh.sha256
 
       - name: Wait for full client-host CI and CodeQL
         if: github.event_name == 'push'
@@ -159,7 +164,7 @@ jobs:
           The binary updater consumes immutable assets from this release.
           The mutable client-host-current tag is only a pointer to the latest verified release."
           if gh release view "$immutable_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               --repo "${{ github.repository }}"               --clobber
+            gh release upload "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               xch.sh xch.sh.sha256               --repo "${{ github.repository }}"               --clobber
             gh release edit "$immutable_tag" --repo "${{ github.repository }}" --notes "$notes"
           else
             gh release create "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               --repo "${{ github.repository }}"               --target "$GITHUB_SHA"               --prerelease               --latest=false               --title "3x-ui client-host $GITHUB_SHA"               --notes "$notes"
