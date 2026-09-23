@@ -101,27 +101,34 @@ rollback_now() {
 
 remove_manager() {
   clear
-  echo "Удаление управления client-host"
+  echo "Удаление Client-Host"
   echo
   echo "Будут удалены:"
+  echo "  - patched x-ui будет заменён на оригинальный бинарник"
   echo "  - команда xch"
   echo "  - managed updater"
+  echo "  - client-host backups"
   echo "  - старый systemd timer/service (если остались)"
   echo
-  echo "Текущий бинарник /usr/local/x-ui/x-ui НЕ удаляется."
-  echo "Удаление менеджера не должно ломать 3x-ui."
+  echo "БД и конфигурация 3x-ui не изменяются."
   echo
-  read -r -p "Продолжить? [y/N] " answer
+  read -r -p "Вернуть оригинальный 3x-ui и удалить Client-Host? [y/N] " answer
   case "${answer,,}" in
     y|yes)
-      if systemctl list-unit-files --type=timer --all 2>/dev/null |
-        grep -q '^x-ui-client-host-update.timer'; then
-        run_root systemctl disable --now x-ui-client-host-update.timer >/dev/null 2>&1 || true
-      fi
+      clear
+      echo "Восстановление оригинального 3x-ui..."
+      echo
+      run_root "$UPDATER" uninstall
+      echo
       run_root rm -f "$SERVICE_UNIT" "$TIMER_UNIT" "$UPDATER" "$MANAGER"
+      run_root rm -rf "$BACKUP_DIR" \
+        "/usr/local/x-ui/.client-host-original-x-ui" \
+        "/usr/local/x-ui/.client-host-original-x-ui.sha256"
+      run_root rm -f "/usr/local/x-ui/.client-host-update.lock"
       run_root systemctl daemon-reload
       echo
-      echo "Client-host manager удалён."
+      echo "Client-Host полностью удалён."
+      echo "Оригинальный 3x-ui восстановлен."
       exit 0
       ;;
     *)
@@ -131,7 +138,6 @@ remove_manager() {
       ;;
   esac
 }
-
 menu() {
   while true; do
     clear
