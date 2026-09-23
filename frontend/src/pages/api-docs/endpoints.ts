@@ -1131,7 +1131,7 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/clients/:email/hosts',
         summary:
-          'Return the HostGroup IDs explicitly assigned to this client for subscription endpoint selection. An empty array means legacy behavior: all enabled hosts from the client\'s attached inbounds.',
+          "Return the HostGroup IDs explicitly assigned to this client for subscription endpoint selection. An empty array means legacy behavior: all enabled hosts from the client's attached inbounds.",
         params: [
           { name: 'email', in: 'path', type: 'string', desc: 'Client email (unique identifier).' },
         ],
@@ -1141,7 +1141,7 @@ export const sections: readonly Section[] = [
         method: 'POST',
         path: '/panel/api/clients/:email/hosts',
         summary:
-          'Replace the client\'s HostGroup assignment for subscription endpoint selection. Use an empty hostGroupIds array to restore legacy behavior and include all enabled hosts from attached inbounds.',
+          "Replace the client's HostGroup assignment for subscription endpoint selection. Use an empty hostGroupIds array to restore legacy behavior and include all enabled hosts from attached inbounds.",
         params: [
           { name: 'email', in: 'path', type: 'string', desc: 'Client email (unique identifier).' },
           {

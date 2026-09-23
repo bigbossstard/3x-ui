@@ -1217,7 +1217,10 @@ export default function ClientFormModal({
                                 .includes(input.toLowerCase()),
                           }}
                         />
-                        <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+                        <Typography.Text
+                          type="secondary"
+                          style={{ display: 'block', marginTop: 4 }}
+                        >
                           {t('pages.clients.hostsEmptyMeansAll')}
                         </Typography.Text>
                       </Form.Item>

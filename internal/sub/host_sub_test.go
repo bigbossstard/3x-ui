@@ -471,7 +471,6 @@ func TestSub_HostCipherSuitesJSON(t *testing.T) {
 	}
 }
 
-
 func TestSub_ClientHostAssignmentFiltersHosts(t *testing.T) {
 	seedSubDB(t)
 	ib := seedSubInbound(t, "s-host", "client", 4450, 1, wsTLSStream)
