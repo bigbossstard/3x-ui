@@ -21,7 +21,7 @@ on:
 
 permissions:
   contents: write
-  actions: read
+  actions: write
 
 concurrency:
   group: client-host-release
@@ -190,7 +190,7 @@ jobs:
             gh release upload "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               xch.sh xch.sh.sha256               --repo "${{ github.repository }}"               --clobber
             gh release edit "$immutable_tag" --repo "${{ github.repository }}" --notes "$notes"
           else
-            gh release create "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               --repo "${{ github.repository }}"               --target "$GITHUB_SHA"               --prerelease               --latest=false               --title "3x-ui client-host $GITHUB_SHA"               --notes "$notes"
+            gh release create "$immutable_tag"               x-ui x-ui-linux-amd64.sha256               update-client-host.sh update-client-host.sh.sha256               install-client-host.sh install-client-host.sh.sha256               xch.sh xch.sh.sha256               --repo "${{ github.repository }}"               --target "$GITHUB_SHA"               --prerelease               --latest=false               --title "3x-ui client-host $GITHUB_SHA"               --notes "$notes"
           fi
 
       - name: Move immutable current pointer
