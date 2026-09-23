@@ -4,7 +4,6 @@ set -euo pipefail
 REPO="bigbossstard/3x-ui"
 API_URL="https://api.github.com/repos/${REPO}"
 CURRENT_REF_URL="${API_URL}/git/ref/tags/client-host-current"
-HEAD_REF_URL="${API_URL}/git/ref/heads/client-host"
 MANAGED_UPDATER="/usr/local/sbin/update-client-host"
 MANAGER="/usr/local/bin/xch"
 ORIGINAL_BACKUP="/usr/local/x-ui/.client-host-original-x-ui"
@@ -70,19 +69,9 @@ fi
 tmp_dir="$(mktemp -d /tmp/client-host-installer.XXXXXX)"
 trap 'rm -rf "${tmp_dir:-}"' EXIT
 
-echo "Resolving verified client-host release..."
-for attempt in {1..12}; do
-  pointer="$(ref_sha "$CURRENT_REF_URL" || true)"
-  head="$(ref_sha "$HEAD_REF_URL" || true)"
-  if [[ -n "$pointer" && -n "$head" && "$pointer" == "$head" ]]; then
-    target_commit="$pointer"
-    break
-  fi
-  echo "Release pointer is not synchronized with client-host yet; retrying ($attempt/12)..."
-  sleep 10
-done
-
-[[ -n "${target_commit:-}" ]] || die "Could not resolve a verified client-host release."
+echo "Resolving current client-host release..."
+target_commit="$(ref_sha "$CURRENT_REF_URL" || true)"
+[[ -n "$target_commit" ]] || die "Could not resolve the current client-host release."
 
 release_base="https://github.com/${REPO}/releases/download/client-host-${target_commit}"
 
