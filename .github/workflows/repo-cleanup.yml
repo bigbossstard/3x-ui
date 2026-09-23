@@ -13,9 +13,15 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
       - name: Delete obsolete branches
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           for branch in \
@@ -24,5 +30,5 @@ jobs:
             "automation/swiss-clock-hardening" \
             "client-host-v385"; do
             echo "Deleting $branch..."
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" --delete "$branch"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" --delete "$branch"
           done
