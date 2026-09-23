@@ -22,6 +22,97 @@
 Built as an enhanced fork of the original X-UI project, 3X-UI adds broader protocol support, improved stability, per-client traffic accounting, and many quality-of-life features.
 
 > [!IMPORTANT]
+> This repository keeps the upstream 3X-UI project on `main` and maintains the Client-Host patch on the `client-host` branch.
+> The patch adds per-client Host assignment while preserving the existing client → inbound model.
+
+## Client-Host Patch
+
+Client-Host adds **per-client Host assignment** to 3X-UI subscriptions.
+
+A client can be left in the legacy mode (all applicable enabled Hosts) or assigned one or more Host Groups. Host assignment is stored separately from the client → inbound relationship, so changing Host Group rows does not implicitly change Xray client/inbound membership.
+
+See the technical design and compatibility notes in [`docs/client-host-assignment.md`](docs/client-host-assignment.md).
+
+### Requirements
+
+- Existing **3X-UI installation**
+- Linux **x86_64 / amd64**
+- `systemd` with an `x-ui` service
+- Access to GitHub from the node
+- The Client-Host installer is for an existing node; it does not replace the normal 3X-UI installation procedure.
+
+### Installation
+
+Install or update the original upstream 3X-UI first:
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/main/install.sh)
+```
+
+Then install the Client-Host tooling:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bigbossstard/3x-ui/client-host/tools/install-client-host.sh | sudo bash
+```
+
+The Client-Host installer:
+
+1. Verifies that the current node already has a working 3X-UI installation.
+2. Saves a verified copy of the original `/usr/local/x-ui/x-ui` binary before applying the patch.
+3. Resolves `client-host-current` only when it matches the current `client-host` branch head.
+4. Installs the managed updater and `xch` manager.
+5. Does **not** enable automatic Client-Host updates.
+
+After installation:
+
+```bash
+xch
+```
+
+### Client-Host management
+
+The `xch` manager provides:
+
+| Command | Action |
+| --- | --- |
+| `xch update` | Check and install the current Client-Host build |
+| `xch rollback` | Restore the most recently saved Client-Host binary |
+| `xch status` | Show installed version, service state, and release status |
+| `xch remove` | Restore the saved original 3X-UI binary and remove Client-Host |
+
+Interactive mode:
+
+```text
+1) Обновить
+2) Откатить
+3) Статус
+4) Удалить
+0) Выход
+```
+
+Every Client-Host binary update is downloaded from an immutable GitHub release identified by the exact commit SHA. The binary is verified against its published SHA-256 checksum before installation.
+
+The updater stops and restores the previous binary automatically if the new binary does not become active. The SQLite/PostgreSQL database, 3X-UI configuration, Xray binaries, and other installation data are not replaced by a Client-Host binary update.
+
+### Removing Client-Host
+
+```bash
+xch remove
+```
+
+On a current Client-Host installation, removal restores the **original 3X-UI binary that was saved before the patch was installed**, verifies that the restored service becomes active, and only then removes the Client-Host updater, manager, backups, and old Client-Host systemd units.
+
+> [!WARNING]
+> Older manual/experimental installations made before the original-binary backup was introduced may not contain a verified original 3X-UI backup. Such installations must be restored to an original 3X-UI binary before Client-Host can be safely removed.
+
+### Important
+
+- Client-Host currently builds and ships **amd64/x86_64** only.
+- The `client-host-current` tag is a moving pointer to the latest verified Client-Host build; individual release tags are immutable.
+- `xch update` does not replace the database or panel configuration.
+- `xch rollback` is a rollback of Client-Host binaries, **not** an uninstall.
+- The `client-host` branch is the patched branch; upstream synchronization is handled separately.
+> [!IMPORTANT]
 > This project is intended for personal use only. Please do not use it for illegal purposes or in a production environment.
 
 ## Features
