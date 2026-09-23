@@ -624,7 +624,7 @@ func toClientSlim(c ClientWithAttachments) ClientSlim {
 		ResetMax:   c.ResetMax,
 		Group:      c.Group,
 		Comment:    c.Comment,
-		InboundIds:  c.InboundIds,
+		InboundIds:    c.InboundIds,
 		HostGroupIds: c.HostGroupIds,
 		Traffic:     c.Traffic,
 		CreatedAt:  c.CreatedAt,
