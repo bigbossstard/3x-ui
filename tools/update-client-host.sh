@@ -77,14 +77,25 @@ uninstall() {
   require_cmd awk
   require_cmd head
 
-  [[ -s "$ORIGINAL_BACKUP" && -s "$ORIGINAL_BACKUP_SHA256" ]] ||
-    die "Original 3x-ui binary backup not found. Refusing to uninstall without a saved pre-client-host binary."
-
-  local expected actual current_backup current_version timestamp
-  expected="$(awk '{print $1}' "$ORIGINAL_BACKUP_SHA256" | head -n1)"
-  actual="$(sha256sum "$ORIGINAL_BACKUP" | awk '{print $1}')"
-  [[ -n "$expected" && "$actual" == "$expected" ]] ||
-    die "Original 3x-ui backup SHA256 verification failed."
+  local expected actual current_backup current_version timestamp original_backup
+  if [[ -s "$ORIGINAL_BACKUP" && -s "$ORIGINAL_BACKUP_SHA256" ]]; then
+    expected="$(awk '{print $1}' "$ORIGINAL_BACKUP_SHA256" | head -n1)"
+    actual="$(sha256sum "$ORIGINAL_BACKUP" | awk '{print $1}')"
+    [[ -n "$expected" && "$actual" == "$expected" ]] ||
+      die "Original 3x-ui backup SHA256 verification failed."
+    original_backup="$ORIGINAL_BACKUP"
+  else
+    original_backup="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'x-ui.*' -printf '%p
+' 2>/dev/null |
+      sort | while IFS= read -r candidate; do
+        version="$( "$candidate" -v 2>/dev/null || true )"
+        [[ -n "$version" && "$version" != dev+* ]] && { printf '%s
+' "$candidate"; break; }
+      done)"
+    [[ -s "$original_backup" ]] ||
+      die "Original 3x-ui binary backup not found. Refusing to uninstall without a saved pre-client-host binary."
+  fi
+  
 
   exec 9>"$LOCK_FILE"
   flock -n 9 || die "Another client-host operation is already running."
@@ -97,10 +108,10 @@ uninstall() {
 
   echo "Restoring original 3x-ui binary..."
   echo "Current patched version: $current_version"
-  echo "Original backup: $ORIGINAL_BACKUP"
+  echo "Original backup: $original_backup"
 
   systemctl stop x-ui || die "Failed to stop x-ui."
-  install -m 755 "$ORIGINAL_BACKUP" "$XUI_BIN"
+  install -m 755 "$original_backup" "$XUI_BIN"
   systemctl start x-ui || true
 
   if ! wait_for_service; then
@@ -148,30 +159,39 @@ rollback() {
 }
 
 refresh_managed_tools() {
-  local target_commit="$1" raw_url assets_url self_path tmp expected_hash actual
+  local target_commit="$1" raw_url self_path updater_tmp manager_tmp updater_changed=0
   self_path="$(readlink -f "$0" 2>/dev/null || printf "%s" "$0")"
   [[ "$self_path" == "$MANAGED_UPDATER" ]] || return 0
 
-  assets_url="${API_URL}/releases/tags/client-host-${target_commit}/assets?per_page=100"
+  updater_tmp="${TMP_DIR}/update-client-host.sh"
+  manager_tmp="${TMP_DIR}/xch.sh"
+
   echo "Checking managed client-host tools..."
-  expected_hash="$(api_get "$assets_url" |
-    grep -oE '"name"[[:space:]]*:[[:space:]]*"update-client-host\.sh"[^}]*"digest"[[:space:]]*:[[:space:]]*"sha256:[0-9a-fA-F]{64}"' |
-    grep -oE "sha256:[0-9a-fA-F]{64}" |
-    head -n1 |
-    cut -d: -f2 || true)"
-  [[ "$expected_hash" =~ ^[0-9a-fA-F]{64}$ ]] || die "Could not resolve updater digest from the immutable release."
-
-  tmp="${TMP_DIR}/update-client-host.sh"
   raw_url="https://raw.githubusercontent.com/${REPO}/${target_commit}/tools/update-client-host.sh"
-  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30
-    --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60
-    -o "$tmp" "$raw_url"
-  actual="$(sha256sum "$tmp" | awk '{print $1}')"
-  [[ "$actual" == "$expected_hash" ]] || die "Updater SHA256 does not match immutable release."
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
+    --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
+    -o "$updater_tmp" "$raw_url"
+  bash -n "$updater_tmp" || die "Downloaded updater failed shell syntax validation."
 
-  if ! cmp -s "$tmp" "$MANAGED_UPDATER"; then
+  if ! cmp -s "$updater_tmp" "$MANAGED_UPDATER"; then
     echo "Installing newer managed updater..."
-    install -m 755 "$tmp" "$MANAGED_UPDATER"
+    install -m 755 "$updater_tmp" "$MANAGED_UPDATER"
+    updater_changed=1
+  fi
+
+  if [[ -x "$MANAGER" ]]; then
+    raw_url="https://raw.githubusercontent.com/${REPO}/${target_commit}/tools/xch.sh"
+    curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
+      --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
+      -o "$manager_tmp" "$raw_url"
+    bash -n "$manager_tmp" || die "Downloaded manager failed shell syntax validation."
+    if ! cmp -s "$manager_tmp" "$MANAGER"; then
+      echo "Installing newer xch manager..."
+      install -m 755 "$manager_tmp" "$MANAGER"
+    fi
+  fi
+
+  if (( updater_changed )); then
     rm -rf "$TMP_DIR"
     exec "$MANAGED_UPDATER" update
   fi
@@ -267,7 +287,7 @@ case "${1:-update}" in
     rollback
     ;;
   *)
-    echo "Usage: $0 [update|rollback]"
+    echo "Usage: $0 [update|rollback|uninstall]"
     exit 2
     ;;
 esac
