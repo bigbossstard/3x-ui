@@ -26,6 +26,7 @@ on:
       - ".github/workflows/upstream-sync.yml"
       - "tools/client-host-matrix-tester.sh"
       - "tools/update-client-host.sh"
+      - "tools/install-client-host.sh"
 
 permissions:
   contents: read
