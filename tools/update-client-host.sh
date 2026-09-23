@@ -44,7 +44,7 @@ update() {
   backup="$BACKUP_DIR/x-ui.$timestamp"
   tmp="$(mktemp "$XUI_DIR/x-ui.client-host.XXXXXX")"
   checksum="$(mktemp)"
-  trap 'rm -f "$tmp" "$checksum"' EXIT
+  trap 'rm -f "${tmp:-}" "${checksum:-}"' EXIT
 
   echo "Installed version: $current_version"
   echo "Downloading patched x-ui..."
