@@ -108,12 +108,17 @@ jobs:
           echo "sha=$tested_sha" >> "$GITHUB_OUTPUT"
 
       - name: Merge only the exact tested PR head
-        if: steps.pr.outputs.pull-request-number != ''
+        if: steps.pr.outputs.pull-request-number != '' && steps.wait-ci.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+          TESTED_SHA: ${{ steps.wait-ci.outputs.sha }}
         run: |
           set -euo pipefail
-          tested_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
-          gh pr merge "$PR_NUMBER"             --repo "$REPO"             --squash             --delete-branch             --match-head-commit "$tested_sha"
+          final_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
+          [[ "$final_sha" == "$TESTED_SHA" ]] || {
+            echo "::error::The PR head changed after the recorded CI result; refusing to merge untested code."
+            exit 1
+          }
+          gh pr merge "$PR_NUMBER"             --repo "$REPO"             --squash             --delete-branch             --match-head-commit "$TESTED_SHA"
