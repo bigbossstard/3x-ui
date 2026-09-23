@@ -23,7 +23,6 @@ on:
       - "frontend/**"
       - ".github/workflows/codeql.yml"
       - ".github/workflows/ci.yml"
-      - ".github/workflows/build-client-host.yml"
       - ".github/workflows/upstream-sync.yml"
   schedule:
     - cron: "18 2 * * 2"
