@@ -82,16 +82,15 @@ rollback() {
 }
 
 refresh_managed_updater() {
-  local target_commit="$1" base tmp expected actual self_hash
-  local self_path
+  local target_commit="$1" base self_path tmp expected expected_hash actual
   self_path="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
   [[ "$self_path" == "$MANAGED_UPDATER" ]] || return 0
 
   base="$(release_url "$target_commit")"
-  tmp="$(mktemp "${XUI_DIR}/update-client-host.XXXXXX")"
-  expected="$(mktemp)"
-  trap 'rm -f "${tmp:-}" "${expected:-}"' RETURN
+  tmp="${TMP_DIR}/update-client-host.sh"
+  expected="${TMP_DIR}/update-client-host.sh.sha256"
 
+  echo "Checking managed updater..."
   curl -fsSL     --retry 6     --retry-all-errors     --retry-delay 2     --connect-timeout 15     --speed-limit 1     --speed-time 60     -o "$tmp" "${base}/update-client-host.sh"
   curl -fsSL     --retry 6     --retry-all-errors     --retry-delay 2     --connect-timeout 15     --speed-limit 1     --speed-time 60     -o "$expected" "${base}/update-client-host.sh.sha256"
 
@@ -99,16 +98,12 @@ refresh_managed_updater() {
   expected_hash="$(awk '{print $1}' "$expected" | head -n1)"
   [[ -n "$expected_hash" && "$actual" == "$expected_hash" ]] || die "Updater SHA256 verification failed."
 
-  self_hash="$(sha256sum "$MANAGED_UPDATER" | awk '{print $1}')"
-  if [[ "$self_hash" != "$actual" ]]; then
-    echo "Updating managed updater..."
+  if ! cmp -s "$tmp" "$MANAGED_UPDATER"; then
+    echo "Installing newer managed updater..."
     install -m 755 "$tmp" "$MANAGED_UPDATER"
-    rm -f "$tmp" "$expected"
+    rm -rf "$TMP_DIR"
     exec "$MANAGED_UPDATER" update
   fi
-
-  rm -f "$tmp" "$expected"
-  trap - RETURN
 }
 
 update() {
@@ -121,14 +116,14 @@ update() {
   require_cmd install
   require_cmd systemctl
   require_cmd flock
+  require_cmd readlink
 
   exec 9>"$LOCK_FILE"
   flock -n 9 || die "Another client-host update is already running."
 
   mkdir -p "$BACKUP_DIR"
-
   local current_version target_commit target_short base tmp checksum expected actual downloaded_version timestamp backup
-  current_version="$("$XUI_BIN" -v 2>/dev/null || echo unknown)"
+  current_version="$( "$XUI_BIN" -v 2>/dev/null || echo unknown )"
   target_commit="$(latest_commit)"
   target_short="${target_commit:0:8}"
 
@@ -137,12 +132,14 @@ update() {
     return 0
   fi
 
+  TMP_DIR="$(mktemp -d "${XUI_DIR}/.client-host-update.XXXXXX")"
+  trap 'rm -rf "${TMP_DIR:-}"' EXIT
+
   refresh_managed_updater "$target_commit"
 
   base="$(release_url "$target_commit")"
-  tmp="$(mktemp "${XUI_DIR}/x-ui.client-host.XXXXXX")"
-  checksum="$(mktemp)"
-  trap 'rm -f "${tmp:-}" "${checksum:-}"' RETURN
+  tmp="${TMP_DIR}/x-ui"
+  checksum="${TMP_DIR}/x-ui-linux-amd64.sha256"
 
   echo "Installed version: $current_version"
   echo "Target commit: $target_commit"
@@ -181,17 +178,16 @@ update() {
   echo "Version reported by binary: $("$XUI_BIN" -v 2>/dev/null || true)"
   echo "Target commit: $target_commit"
   echo "Database/config were not replaced."
-  rm -f "$tmp" "$checksum"
-  trap - RETURN
 }
-
-require_cmd true
 
 case "${1:-update}" in
   update) update ;;
   rollback)
     [[ "$EUID" -eq 0 ]] || die "Run as root."
     require_cmd flock
+    require_cmd find
+    require_cmd install
+    require_cmd systemctl
     exec 9>"$LOCK_FILE"
     flock -n 9 || die "Another client-host update is already running."
     rollback
