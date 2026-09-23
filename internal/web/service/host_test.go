@@ -390,7 +390,6 @@ func TestHostGroup_CipherSuitesRoundTrip(t *testing.T) {
 	}
 }
 
-
 func TestDeleteHosts_CleansClientHostAssignments(t *testing.T) {
 	setupBulkDB(t)
 	svc := &HostService{}
