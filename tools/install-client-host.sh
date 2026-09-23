@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="bigbossstard/3x-ui"
-RAW_UPDATER_URL="https://raw.githubusercontent.com/${REPO}/client-host/tools/update-client-host.sh"
+RAW_UPDATER_URL="https://raw.githubusercontent.com/${REPO}/client-host-current/tools/update-client-host.sh"
 MANAGED_UPDATER="/usr/local/sbin/update-client-host"
 SERVICE_UNIT="/etc/systemd/system/x-ui-client-host-update.service"
 TIMER_UNIT="/etc/systemd/system/x-ui-client-host-update.timer"

@@ -24,7 +24,7 @@ permissions:
 
 concurrency:
   group: client-host-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-amd64:
@@ -93,10 +93,79 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in {1..540}; do
-            run_line="$(gh run list               --repo "$REPO"               --workflow ci.yml               --commit "$COMMIT"               --limit 10               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
+            ci_line="$(gh run list --repo "$REPO" --workflow ci.yml --commit "$COMMIT" --limit 10               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
+            codeql_line="$(gh run list --repo "$REPO" --workflow codeql.yml --commit "$COMMIT" --limit 10               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
 
-            if [[ -n "$run_line" ]]; then
-              IFS=$'\t' read -r run_id status conclusion <<<"$run_line"
+            ci_ready=0
+            codeql_ready=0
+
+            if [[ -n "$ci_line" ]]; then
+              IFS=
+
+      - name: Refuse to publish a superseded commit
+        if: github.event_name == 'push'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin refs/heads/client-host | awk '{print $1}')"
+          [[ "$remote_head" == "$GITHUB_SHA" ]] || {
+            echo "::notice::Commit $GITHUB_SHA was superseded by $remote_head before publication; skipping release."
+            exit 0
+          }
+
+      - name: Publish immutable commit release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          immutable_tag="client-host-$GITHUB_SHA"
+          notes="Immutable client-host build.
+
+          commit=$GITHUB_SHA
+          This release is never overwritten. The updater resolves the mutable client-host-current pointer to this immutable tag before downloading."
+
+          if gh release view "$immutable_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$immutable_tag" \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" --clobber
+            gh release edit "$immutable_tag" --repo "${{ github.repository }}" --notes "$notes"
+          else
+            gh release create "$immutable_tag" \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --latest=false \
+              --title "3x-ui client-host $GITHUB_SHA" \
+              --notes "$notes"
+          fi
+
+      - name: Move immutable current pointer
+        if: github.event_name == 'push'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git tag -f client-host-current "$GITHUB_SHA"
+          for attempt in 1 2 3 4 5; do
+            git push -f origin refs/tags/client-host-current && break
+            [[ "$attempt" -eq 5 ]] && exit 1
+            sleep $((attempt * 5))
+          done
+
+      - name: Trigger v3.8.5 backport build
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run build-v385.yml --repo "${{ github.repository }}" --ref client-host-v385
+\t' read -r run_id status conclusion <<<"$ci_line"
               echo "CI run=$run_id status=$status conclusion=$conclusion"
               if [[ "$status" == "completed" ]]; then
                 if [[ "$conclusion" != "success" ]]; then
@@ -104,15 +173,97 @@ jobs:
                   echo "::error::Full client-host CI failed; release publication is blocked."
                   exit 1
                 fi
-                exit 0
+                ci_ready=1
               fi
-            else
-              echo "Waiting for full client-host CI on $COMMIT..."
             fi
+
+            if [[ -n "$codeql_line" ]]; then
+              IFS=
+
+      - name: Refuse to publish a superseded commit
+        if: github.event_name == 'push'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin refs/heads/client-host | awk '{print $1}')"
+          [[ "$remote_head" == "$GITHUB_SHA" ]] || {
+            echo "::notice::Commit $GITHUB_SHA was superseded by $remote_head before publication; skipping release."
+            exit 0
+          }
+
+      - name: Publish immutable commit release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          immutable_tag="client-host-$GITHUB_SHA"
+          notes="Immutable client-host build.
+
+          commit=$GITHUB_SHA
+          This release is never overwritten. The updater resolves the mutable client-host-current pointer to this immutable tag before downloading."
+
+          if gh release view "$immutable_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$immutable_tag" \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" --clobber
+            gh release edit "$immutable_tag" --repo "${{ github.repository }}" --notes "$notes"
+          else
+            gh release create "$immutable_tag" \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --latest=false \
+              --title "3x-ui client-host $GITHUB_SHA" \
+              --notes "$notes"
+          fi
+
+      - name: Move immutable current pointer
+        if: github.event_name == 'push'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git tag -f client-host-current "$GITHUB_SHA"
+          for attempt in 1 2 3 4 5; do
+            git push -f origin refs/tags/client-host-current && break
+            [[ "$attempt" -eq 5 ]] && exit 1
+            sleep $((attempt * 5))
+          done
+
+      - name: Trigger v3.8.5 backport build
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run build-v385.yml --repo "${{ github.repository }}" --ref client-host-v385
+\t' read -r run_id status conclusion <<<"$codeql_line"
+              echo "CodeQL run=$run_id status=$status conclusion=$conclusion"
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" != "success" ]]; then
+                  gh run view "$run_id" --repo "$REPO" --log-failed || true
+                  echo "::error::CodeQL failed; release publication is blocked."
+                  exit 1
+                fi
+                codeql_ready=1
+              fi
+            fi
+
+            if (( ci_ready == 1 && codeql_ready == 1 )); then
+              exit 0
+            fi
+
+            echo "Waiting for both full client-host CI and CodeQL on $COMMIT..."
             sleep 10
           done
 
-          echo "::error::Timed out waiting for full client-host CI."
+          echo "::error::Timed out waiting for full client-host CI + CodeQL."
           exit 1
 
       - name: Refuse to publish a superseded commit

@@ -29,6 +29,10 @@ on:
       - "x-ui.service.rhel"
       - ".github/workflows/release.yml"
 
+concurrency:
+  group: 3xui-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     permissions:
