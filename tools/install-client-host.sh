@@ -22,7 +22,7 @@ require_cmd() {
 }
 
 api_get() {
-  curl -fsSL --retry 6 --retry-all-errors --retry-delay 2     --connect-timeout 15 --speed-limit 1 --speed-time 60     -H "Accept: application/vnd.github+json"     -H "User-Agent: 3x-ui-client-host-installer" "$1"
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30     --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 180     -H "Accept: application/vnd.github+json"     -H "User-Agent: 3x-ui-client-host-installer" "$1"
 }
 
 ref_sha() {
@@ -92,8 +92,8 @@ download_verified() {
   local checksum="${target}.sha256"
   local expected actual
 
-  curl -fsSL --retry 6 --retry-all-errors --retry-delay 2     --connect-timeout 15 --speed-limit 1 --speed-time 60     -o "$target" "${release_base}/${name}"
-  curl -fsSL --retry 6 --retry-all-errors --retry-delay 2     --connect-timeout 15 --speed-limit 1 --speed-time 60     -o "$checksum" "${release_base}/${name}.sha256"
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30     --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 180     -o "$target" "${release_base}/${name}"
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30     --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 180     -o "$checksum" "${release_base}/${name}.sha256"
 
   expected="$(awk '{print $1}' "$checksum" | head -n1)"
   actual="$(sha256sum "$target" | awk '{print $1}')"
