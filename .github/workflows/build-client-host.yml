@@ -15,6 +15,7 @@ on:
       - ".github/workflows/ci.yml"
       - "tools/client-host-matrix-tester.sh"
       - "tools/update-client-host.sh"
+      - "tools/install-client-host.sh"
   workflow_dispatch:
 
 permissions:
@@ -66,7 +67,10 @@ jobs:
           sha256sum x-ui > x-ui-linux-amd64.sha256
           cp tools/update-client-host.sh update-client-host.sh
           chmod 755 update-client-host.sh
+          cp tools/install-client-host.sh install-client-host.sh
+          chmod 755 install-client-host.sh
           sha256sum update-client-host.sh > update-client-host.sh.sha256
+          sha256sum install-client-host.sh > install-client-host.sh.sha256
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
@@ -77,6 +81,8 @@ jobs:
             x-ui-linux-amd64.sha256
             update-client-host.sh
             update-client-host.sh.sha256
+            install-client-host.sh
+            install-client-host.sh.sha256
 
       - name: Wait for full client-host CI
         if: github.event_name == 'push'
@@ -135,7 +141,7 @@ jobs:
           This release is never overwritten. The updater resolves the mutable client-host-current pointer to this immutable tag before downloading."
 
           if gh release view "$immutable_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$immutable_tag"               x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256               --repo "${{ github.repository }}" --clobber
+            gh release upload "$immutable_tag"               x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 install-client-host.sh install-client-host.sh.sha256 install-client-host.sh install-client-host.sh.sha256               --repo "${{ github.repository }}" --clobber
             gh release edit "$immutable_tag" --repo "${{ github.repository }}" --notes "$notes"
           else
             gh release create "$immutable_tag"               x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256               --repo "${{ github.repository }}"               --target "$GITHUB_SHA"               --prerelease               --latest=false               --title "3x-ui client-host $GITHUB_SHA"               --notes "$notes"
