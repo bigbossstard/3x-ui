@@ -29,7 +29,7 @@ concurrency:
 jobs:
   build-amd64:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 110
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -92,7 +92,7 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          for attempt in {1..240}; do
+          for attempt in {1..540}; do
             run_line="$(gh run list               --repo "$REPO"               --workflow ci.yml               --commit "$COMMIT"               --limit 10               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
 
             if [[ -n "$run_line" ]]; then
@@ -141,10 +141,21 @@ jobs:
           This release is never overwritten. The updater resolves the mutable client-host-current pointer to this immutable tag before downloading."
 
           if gh release view "$immutable_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$immutable_tag"               x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 install-client-host.sh install-client-host.sh.sha256 install-client-host.sh install-client-host.sh.sha256               --repo "${{ github.repository }}" --clobber
+            gh release upload "$immutable_tag" \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" --clobber
             gh release edit "$immutable_tag" --repo "${{ github.repository }}" --notes "$notes"
           else
-            gh release create "$immutable_tag"               x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256               --repo "${{ github.repository }}"               --target "$GITHUB_SHA"               --prerelease               --latest=false               --title "3x-ui client-host $GITHUB_SHA"               --notes "$notes"
+            gh release create "$immutable_tag" \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --latest=false \
+              --title "3x-ui client-host $GITHUB_SHA" \
+              --notes "$notes"
           fi
 
       - name: Publish rolling release for humans
@@ -160,10 +171,21 @@ jobs:
 
           The binary updater does not consume this rolling asset; it uses the immutable release above."
           if gh release view client-host --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload client-host               x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256               --repo "${{ github.repository }}" --clobber
+            gh release upload client-host \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" --clobber
             gh release edit client-host --repo "${{ github.repository }}" --notes "$notes"
           else
-            gh release create client-host               x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256               --repo "${{ github.repository }}"               --target "$GITHUB_SHA"               --prerelease               --latest=false               --title "3x-ui client-host (rolling)"               --notes "$notes"
+            gh release create client-host \
+              x-ui x-ui-linux-amd64.sha256 update-client-host.sh update-client-host.sh.sha256 \
+              install-client-host.sh install-client-host.sh.sha256 \
+              --repo "${{ github.repository }}" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --latest=false \
+              --title "3x-ui client-host (rolling)" \
+              --notes "$notes"
           fi
 
       - name: Move immutable current pointer
@@ -173,7 +195,11 @@ jobs:
         run: |
           set -euo pipefail
           git tag -f client-host-current "$GITHUB_SHA"
-          git push -f origin refs/tags/client-host-current
+          for attempt in 1 2 3 4 5; do
+            git push -f origin refs/tags/client-host-current && break
+            [[ "$attempt" -eq 5 ]] && exit 1
+            sleep $((attempt * 5))
+          done
 
       - name: Trigger v3.8.5 backport build
         if: github.event_name == 'push'
