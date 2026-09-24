@@ -46,6 +46,25 @@ release_url() {
   printf 'https://github.com/%s/releases/download/client-host-%s' "$REPO" "$commit"
 }
 
+download_verified_asset() {
+  local base="$1" name="$2" target="$3" checksum expected actual
+  checksum="${target}.sha256"
+
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
+    --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
+    -o "$target" "${base}/${name}"
+  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
+    --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
+    -o "$checksum" "${base}/${name}.sha256"
+
+  expected="$(awk '{print $1}' "$checksum" | head -n1)"
+  [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] ||
+    die "Invalid SHA256 file for $name."
+  actual="$(sha256sum "$target" | awk '{print $1}')"
+  [[ "$actual" == "$expected" ]] ||
+    die "SHA256 verification failed for $name."
+}
+
 wait_for_service() {
   local attempt
   for attempt in {1..15}; do
@@ -150,18 +169,17 @@ rollback() {
 }
 
 refresh_managed_tools() {
-  local target_commit="$1" raw_url self_path updater_tmp manager_tmp updater_changed=0
+  local target_commit="$1" self_path updater_tmp manager_tmp updater_changed=0
   self_path="$(readlink -f "$0" 2>/dev/null || printf "%s" "$0")"
   [[ "$self_path" == "$MANAGED_UPDATER" ]] || return 0
 
   updater_tmp="${TMP_DIR}/update-client-host.sh"
   manager_tmp="${TMP_DIR}/xch.sh"
+  local base
+  base="$(release_url "$target_commit")"
 
   echo "Checking managed client-host tools..."
-  raw_url="https://raw.githubusercontent.com/${REPO}/${target_commit}/tools/update-client-host.sh"
-  curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
-    --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
-    -o "$updater_tmp" "$raw_url"
+  download_verified_asset "$base" "update-client-host.sh" "$updater_tmp"
   bash -n "$updater_tmp" || die "Downloaded updater failed shell syntax validation."
 
   if ! cmp -s "$updater_tmp" "$MANAGED_UPDATER"; then
@@ -171,10 +189,7 @@ refresh_managed_tools() {
   fi
 
   if [[ -x "$MANAGER" ]]; then
-    raw_url="https://raw.githubusercontent.com/${REPO}/${target_commit}/tools/xch.sh"
-    curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
-      --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
-      -o "$manager_tmp" "$raw_url"
+    download_verified_asset "$base" "xch.sh" "$manager_tmp"
     bash -n "$manager_tmp" || die "Downloaded manager failed shell syntax validation."
     if ! cmp -s "$manager_tmp" "$MANAGER"; then
       echo "Installing newer xch manager..."
@@ -187,6 +202,7 @@ refresh_managed_tools() {
     exec "$MANAGED_UPDATER" update
   fi
 }
+
 update() {
   [[ "$EUID" -eq 0 ]] || die "Run as root."
   [[ "$(uname -m)" == "x86_64" ]] || die "This updater currently supports only x86_64."
@@ -203,7 +219,7 @@ update() {
   flock -n 9 || die "Another client-host update is already running."
 
   mkdir -p "$BACKUP_DIR"
-  local current_version target_commit target_short base tmp checksum expected actual downloaded_version timestamp backup
+  local current_version target_commit target_short base tmp downloaded_version timestamp backup
   current_version="$( "$XUI_BIN" -v 2>/dev/null || echo unknown )"
   target_commit="$(latest_commit)"
   target_short="${target_commit:0:8}"
@@ -220,18 +236,12 @@ update() {
 
   base="$(release_url "$target_commit")"
   tmp="${TMP_DIR}/x-ui"
-  checksum="${TMP_DIR}/x-ui-linux-amd64.sha256"
 
   echo "Installed version: $current_version"
   echo "Target commit: $target_commit"
   echo "Downloading immutable client-host release..."
 
-  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 180     -o "$tmp" "${base}/x-ui"
-  curl -4 -fsSL     --retry 3     --retry-all-errors     --retry-delay 1     --retry-max-time 30     --connect-timeout 10     --speed-limit 1     --speed-time 30     --max-time 45     -o "$checksum" "${base}/x-ui-linux-amd64.sha256"
-
-  expected="$(awk '{print $1}' "$checksum" | head -n1)"
-  actual="$(sha256sum "$tmp" | awk '{print $1}')"
-  [[ -n "$expected" && "$expected" == "$actual" ]] || die "SHA256 verification failed."
+  download_verified_asset "$base" "x-ui" "$tmp"
 
   chmod 755 "$tmp"
   downloaded_version="$( "$tmp" -v 2>/dev/null || true )"
