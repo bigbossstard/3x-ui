@@ -9,6 +9,7 @@ on:
       - "frontend/**"
       - ".nvmrc"
       - "Makefile"
+      - ".github/workflows/*.yml"
   push:
     branches:
       - main
@@ -39,6 +40,7 @@ jobs:
           bash -n tools/update-client-host.sh
           bash -n tools/install-client-host.sh
           bash -n tools/xch.sh
+          bash -n tools/client-host-matrix-tester.sh
 
   go-test:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
