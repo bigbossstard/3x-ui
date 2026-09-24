@@ -12,12 +12,14 @@ on:
       - "go.mod"
       - "go.sum"
       - "frontend/**"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "**.go"
       - "go.mod"
       - "go.sum"
       - "frontend/**"
+      - ".github/workflows/**"
   schedule:
     - cron: "18 2 * * 2"
 
