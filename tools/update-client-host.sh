@@ -47,15 +47,15 @@ release_url() {
 }
 
 download_verified_asset() {
-  local base="$1" name="$2" target="$3" checksum expected actual
-  checksum="${target}.sha256"
+  local base="$1" name="$2" target="$3" checksum_name="${4:-${name}.sha256}"
+  local checksum="${target}.sha256" expected actual
 
   curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
     --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
     -o "$target" "${base}/${name}"
   curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
     --connect-timeout 10 --speed-limit 1 --speed-time 30 --max-time 60 \
-    -o "$checksum" "${base}/${name}.sha256"
+    -o "$checksum" "${base}/${checksum_name}"
 
   expected="$(awk '{print $1}' "$checksum" | head -n1)"
   [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]] ||
@@ -241,7 +241,7 @@ update() {
   echo "Target commit: $target_commit"
   echo "Downloading immutable client-host release..."
 
-  download_verified_asset "$base" "x-ui" "$tmp"
+  download_verified_asset "$base" "x-ui" "$tmp" "x-ui-linux-amd64.sha256"
 
   chmod 755 "$tmp"
   downloaded_version="$( "$tmp" -v 2>/dev/null || true )"
