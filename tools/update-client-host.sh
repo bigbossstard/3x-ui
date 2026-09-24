@@ -47,7 +47,8 @@ release_url() {
 }
 
 download_verified_asset() {
-  local base="$1" name="$2" target="$3" checksum_name="${4:-${name}.sha256}"
+  local base="$1" name="$2" target="$3" checksum_name
+  checksum_name="${4:-${name}.sha256}"
   local checksum="${target}.sha256" expected actual
 
   curl -4 -fsSL --retry 3 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
