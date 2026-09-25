@@ -1120,7 +1120,7 @@ export const sections: readonly Section[] = [
         method: 'GET',
         path: '/panel/api/clients/get/:email',
         summary:
-          'Fetch one client by email, including the inbound IDs and external config IDs it is attached to.',
+          'Fetch one client by email, including legacy attachments, HostGroup assignments, and resolved access policy from its administrative client group.',
         params: [
           { name: 'email', in: 'path', type: 'string', desc: 'Client email (unique identifier).' },
         ],

@@ -143,6 +143,10 @@ func (a *ClientController) buildClientPayload(rec *model.ClientRecord) (gin.H, e
 	if err != nil {
 		return nil, err
 	}
+	access, err := service.ResolveClientAccess(rec.Id)
+	if err != nil {
+		return nil, err
+	}
 	return gin.H{
 		"client":           rec,
 		"inboundIds":       inboundIds,
@@ -150,6 +154,7 @@ func (a *ClientController) buildClientPayload(rec *model.ClientRecord) (gin.H, e
 		"usedTraffic":      usedTraffic,
 		"tunnelAllowedIPs": tunnelAllowedIPs,
 		"hostGroupIds":     hostGroupIds,
+		"effectiveAccess":  access,
 	}, nil
 }
 
