@@ -973,7 +973,7 @@ type ClientGroup struct {
 func (ClientGroup) TableName() string { return "client_groups" }
 
 type ClientGroupHost struct {
-	GroupName string `json:"groupName" gorm:"primaryKey;column:group_name;index"`
+	GroupName   string `json:"groupName" gorm:"primaryKey;column:group_name;index"`
 	HostGroupId string `json:"hostGroupId" gorm:"primaryKey;column:host_group_id;index"`
 }
 

@@ -176,10 +176,6 @@ export default function GroupsPage() {
   });
 
   useEffect(() => {
-    if (groups.length === 0) {
-      setGroupHostAssignments({});
-      return;
-    }
     let cancelled = false;
     void Promise.all(
       groups.map(async (group) => {
