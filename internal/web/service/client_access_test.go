@@ -11,7 +11,7 @@ import (
 func TestResolveClientAccessUsesGroupPolicies(t *testing.T) {
 	setupConflictDB(t)
 	db := database.GetDB()
-	if err := db.Create(&model.Inbound{Remark: "one"}).Error; err != nil {
+	if err := db.Create(&model.Inbound{Tag: "group-policy-access", Remark: "one"}).Error; err != nil {
 		t.Fatalf("create inbound: %v", err)
 	}
 	if err := db.Create(&model.ClientGroup{Name: "premium", PolicyState: model.ClientGroupPolicyRestricted}).Error; err != nil {
