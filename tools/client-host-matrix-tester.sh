@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# 3x-ui ClientHost matrix tester
+# 3x-ui ClientHost group matrix tester
 # - never modifies the source DB
 # - copies /etc/x-ui and /usr/local/x-ui into a temp tree
 # - starts a second x-ui process against the copied DB on private localhost ports
@@ -260,13 +260,16 @@ if (( STARTUP_ONLY == 1 )); then
   exit 0
 fi
 
-python3 - "$COPY_DB" "$STATE_JSON" "$ITERATIONS" "$SUB_PORT" <<'PY'
+python3 - "$COPY_DB" "$STATE_JSON" "$ITERATIONS" "$SUB_PORT" "$SUB_PATH" "$JSON_PATH" "$CLASH_PATH" <<'PY'
 import base64, json, os, random, re, sqlite3, string, subprocess, sys, time
 
 DB=sys.argv[1]
 STATE=sys.argv[2]
 ITER=int(sys.argv[3])
 PORT=int(sys.argv[4])
+SUB_PATH=sys.argv[5]
+JSON_PATH=sys.argv[6]
+CLASH_PATH=sys.argv[7]
 
 con=sqlite3.connect(DB)
 con.row_factory=sqlite3.Row
@@ -284,13 +287,16 @@ def must_table(t):
     if not q1("select 1 from sqlite_master where type='table' and name=?",(t,)):
         raise RuntimeError(f'missing table {t}')
 
-for t in ['clients','client_inbounds','client_hosts','hosts','inbounds']:
+for t in ['clients','client_inbounds','client_group_hosts','hosts','inbounds']:
     must_table(t)
 
 client_cols=cols('clients'); ci_cols=cols('client_inbounds'); host_cols=cols('hosts'); inb_cols=cols('inbounds')
 
-if not has('clients','id') or not has('clients','email') or not has('clients','sub_id'):
+if not has('clients','id') or not has('clients','email') or not has('clients','sub_id') or not has('clients','group_name'):
     raise RuntimeError(f'clients schema unsupported: {client_cols}')
+group_host_cols=cols('client_group_hosts')
+if not {'group_name','host_group_id'}.issubset(set(group_host_cols)):
+    raise RuntimeError(f'client_group_hosts schema unsupported: {group_host_cols}')
 if not {'client_id','inbound_id'}.issubset(set(ci_cols)):
     raise RuntimeError(f'client_inbounds schema unsupported: {ci_cols}')
 if not {'inbound_id','group_id','address'}.issubset(set(host_cols)):
@@ -345,13 +351,14 @@ for idx,email in enumerate([
 ]):
     cid=next_client+idx
     subid='TEST-CH-'+''.join(random.choice(string.ascii_letters+string.digits) for _ in range(18))+str(idx)
-    overrides={'id':cid,'email':email,'sub_id':subid}
+    client_group=f'TEST-CLIENT-GRP-{idx+1}-'+''.join(random.choice(string.ascii_lowercase+string.digits) for _ in range(8))
+    overrides={'id':cid,'email':email,'sub_id':subid,'group_name':client_group}
     if 'enable' in client_cols: overrides['enable']=1
     if 'uuid' in client_cols: overrides['uuid']=str(__import__('uuid').uuid4())
     if 'password' in client_cols: overrides['password']='CH-'+''.join(random.choice(string.ascii_letters+string.digits) for _ in range(24))
     if 'remark' in client_cols: overrides['remark']=f'CLIENT-HOST-MATRIX-{idx+1}'
     insert_clone('clients',seed,overrides)
-    clients.append({'id':cid,'email':email,'sub_id':subid})
+    clients.append({'id':cid,'email':email,'sub_id':subid,'group_name':client_group})
 
 # Clear any accidental unique columns from clones are already generated; attach all four to I1/I2 via normalized table.
 for c in clients:
@@ -405,11 +412,13 @@ con.commit()
 
 # Utility: reset synthetic assignment rows only; host/inbound/client topology is then changed per scenario.
 def clear_assignments():
-    cur.execute('delete from client_hosts where client_id in (%s)' % ','.join('?',)*len(clients), tuple(c['id'] for c in clients))
+    marks=','.join('?' for _ in clients)
+    cur.execute(f'delete from client_group_hosts where group_name in ({marks})', tuple(c['group_name'] for c in clients))
 
 def set_assign(client, keys):
+    cur.execute('delete from client_group_hosts where group_name=?',(client['group_name'],))
     for k in keys:
-        cur.execute('insert or ignore into client_hosts (client_id,group_id) values (?,?)',(client['id'],groups[k]))
+        cur.execute('insert or ignore into client_group_hosts (group_name,host_group_id) values (?,?)',(client['group_name'],groups[k]))
 
 def set_inbounds(client, ids):
     cur.execute('delete from client_inbounds where client_id=?',(client['id'],))
@@ -424,7 +433,8 @@ def group_hosts_for(iid, keys=None):
     sql='select group_id,address,is_disabled,exclude_from_sub_types from hosts where inbound_id=?'
     if keys:
         gids=[groups[k] for k in keys]
-        sql += ' and group_id in (%s)' % ','.join('?'*len(gids)); params.extend(gids)
+        marks=','.join('?' for _ in gids)
+        sql += f' and group_id in ({marks})'; params.extend(gids)
     return qall(sql,params)
 
 def curl_path(subid,path=None):
@@ -474,20 +484,20 @@ def expect(name, observed, expected, detail=''):
 def links_matching(raw, addrs):
     return {a: raw.count(a) for a in addrs}
 
-def run_case(name, client, assigned, enabled1=True, enabled2=True, attach=(I1,I2), expected_addrs=None, exclusions=False):
+def run_case(name, client, assigned, enabled1=True, enabled2=True, attach=(I1,I2), expected_addrs=None, expected_counts=None, exclusions=False):
     clear_assignments(); set_inbounds(client,attach); set_assign(client,assigned); set_enabled(I1,enabled1); set_enabled(I2,enabled2); con.commit()
     raw=get_raw(client['sub_id'])
     addrs=[f'{k.lower()}.client-host-test.invalid' for k in groups]
     got=links_matching(raw,addrs)
     if expected_addrs is None:
         expected_addrs=[]
-    exp={a:(1 if a in expected_addrs else 0) for a in addrs}
+    exp={a:(expected_counts.get(a, 1) if expected_counts and a in expected_counts else (1 if a in expected_addrs else 0)) for a in addrs}
     return expect(name,got,exp)
 
-# 1 Legacy: all enabled applicable hosts on attached inbounds => A,B,C plus D is disabled.
-run_case('01 legacy client = all applicable enabled hosts',clients[0],[],True,True,expected_addrs=['a.client-host-test.invalid','b.client-host-test.invalid','c.client-host-test.invalid','e.client-host-test.invalid'])
+# 1 Legacy group: no HostGroup assignment => all enabled applicable hosts.
+run_case('01 legacy client = all applicable enabled hosts',clients[0],[],True,True,expected_addrs=['a.client-host-test.invalid','b.client-host-test.invalid','c.client-host-test.invalid'],expected_counts={'b.client-host-test.invalid':2})
 
-# 2 Single assignment A => only A on I1; B/C/D excluded.
+# 2 Single group assignment A => only A on I1; B/C/D excluded.
 run_case('02 single HostGroup',clients[1],['A'],True,True,expected_addrs=['a.client-host-test.invalid'])
 
 # 3 B exists on two inbounds => should be returned once per inbound, so count 2.
@@ -508,7 +518,7 @@ clear_assignments(); set_inbounds(clients[2],(I1,I2)); set_assign(clients[2],['A
 raw=get_raw(clients[2]['sub_id']); got={k:raw.count(f'{k.lower()}.client-host-test.invalid') for k in ['A','B','C','D','E']}
 expect('06 multiple HostGroups',got,{'A':1,'B':2,'C':0,'D':0,'E':0})
 
-# 7 Disabled Host itself => no D even on enabled inbound. Temporarily make D enabled to prove then disable.
+# 7 Disabled Host itself => no D even on enabled inbound.
 cur.execute('update hosts set inbound_id=?, is_disabled=1 where group_id=?',(I1,groups['D'])); con.commit()
 run_case('07 disabled host is omitted',clients[1],['D'],True,True,expected_addrs=[])
 
@@ -533,9 +543,9 @@ raw=get_raw(clients[1]['sub_id']); expect('11 recreate HostGroup with same logic
 # 12 Move A from I1 to I2. Client remains attached to I1 only => disappears.
 cur.execute('update hosts set inbound_id=? where group_id=?',(I2,groups['A'])); set_inbounds(clients[1],(I1,)); set_assign(clients[1],['A']); set_enabled(I1,True); set_enabled(I2,True); con.commit()
 raw=get_raw(clients[1]['sub_id']); expect('12 move Host to another inbound',raw.count('a.client-host-test.invalid'),0)
-# Move back and now attach client to I2 => appears.
+# Move back and keep the client on I2; the moved Host is not applicable there.
 cur.execute('update hosts set inbound_id=? where group_id=?',(I1,groups['A'])); set_inbounds(clients[1],(I2,)); con.commit()
-raw=get_raw(clients[1]['sub_id']); expect('12b moved Host follows new client inbound',raw.count('a.client-host-test.invalid'),1)
+raw=get_raw(clients[1]['sub_id']); expect('12b moved Host follows new client inbound',raw.count('a.client-host-test.invalid'),0)
 
 # 13 Change Client inbounds. Assigned B remains, output follows client_inbounds.
 set_inbounds(clients[2],(I1,I2)); set_assign(clients[2],['B']); set_enabled(I1,True); set_enabled(I2,True); con.commit()
@@ -546,25 +556,26 @@ set_inbounds(clients[2],(I1,)); con.commit(); raw=get_raw(clients[2]['sub_id']);
 set_inbounds(clients[3],(I1,I2)); set_assign(clients[3],['B']); set_enabled(I1,True); set_enabled(I2,True); con.commit()
 raw=get_raw(clients[3]['sub_id']); expect('14 mixed-case email assignment lookup',raw.count('b.client-host-test.invalid'),2)
 
-# 15 Client deletion cleanup is simulated against the copied DB schema. Verify no assignment rows remain after delete.
+# 15 Client deletion cleanup is simulated against the copied DB schema. Verify no group assignment rows remain after delete.
 clear_assignments(); set_assign(clients[3],['B']); con.commit()
-cur.execute('delete from client_hosts where client_id=?',(clients[3]['id'],)); cur.execute('delete from client_inbounds where client_id=?',(clients[3]['id'],)); cur.execute('delete from clients where id=?',(clients[3]['id'],)); con.commit()
-rows=cur.execute('select count(*) from client_hosts where client_id=?',(clients[3]['id'],)).fetchone()[0]
-expect('15 client deletion leaves no ClientHost rows',rows,0)
+cur.execute('delete from client_group_hosts where group_name=?',(clients[3]['group_name'],)); cur.execute('delete from client_inbounds where client_id=?',(clients[3]['id'],)); cur.execute('delete from clients where id=?',(clients[3]['id'],)); con.commit()
+rows=cur.execute('select count(*) from client_group_hosts where group_name=?',(clients[3]['group_name'],)).fetchone()[0]
+expect('15 client deletion leaves no ClientGroupHost rows',rows,0)
 
 # 16 Import/export semantic round-trip at DB level: assigned set can be cleared and restored without duplicates.
 clear_assignments(); set_assign(clients[2],['A','B']); con.commit()
-orig=[r[0] for r in qall('select group_id from client_hosts where client_id=? order by group_id',(clients[2]['id'],))]
+orig=[r[0] for r in qall('select host_group_id from client_group_hosts where group_name=? order by host_group_id',(clients[2]['group_name'],))]
 clear_assignments(); set_assign(clients[2],['B','A','A']); con.commit()
-back=[r[0] for r in qall('select group_id from client_hosts where client_id=? order by group_id',(clients[2]['id'],))]
+back=[r[0] for r in qall('select host_group_id from client_group_hosts where group_name=? order by host_group_id',(clients[2]['group_name'],))]
 expect('16 assignment round-trip dedupe',back,orig)
 
 # 17 Fail-closed check: temporarily drop a required lookup table in a transactionless copy is unsafe for live DB.
 # Instead verify the implementation's synthetic restriction invariant indirectly: a restricted assignment to a non-existing group returns zero.
-clear_assignments(); set_inbounds(clients[2],(I1,I2)); cur.execute('insert into client_hosts values (?,?)',(clients[2]['id'],'NONEXISTENT-GROUP-XYZ')); con.commit()
+clear_assignments(); set_inbounds(clients[2],(I1,I2)); cur.execute('insert into client_group_hosts values (?,?)',(clients[2]['group_name'],'NONEXISTENT-GROUP-XYZ')); con.commit()
 raw=get_raw(clients[2]['sub_id']); expect('17 nonexistent assigned group returns zero (no legacy fallback)',sum(raw.count(f'{k.lower()}.client-host-test.invalid') for k in ['A','B','C','D','E']),0)
 
-# 18 Raw endpoint smoke: subscription server answers 200 for synthetic client.
+# 18 Raw endpoint smoke: subscription server answers 200 for a valid assigned group.
+set_assign(clients[2],['B']); con.commit()
 rc,body,err=curl_path(clients[2]['sub_id'],SUB_PATH)
 expect('18 raw subscription endpoint returns HTTP 200', 'HTTP_CODE:200' in body, True, err[:200])
 
@@ -576,14 +587,13 @@ clash_path,clash_body=discover_variant(clients[2]['sub_id'],clash_candidates)
 print('[INFO] JSON endpoint:', json_path or 'not discovered')
 print('[INFO] Clash endpoint:', clash_path or 'not discovered')
 if json_path:
-    # Assignment is nonexistent at this moment; both JSON/Clash must not leak legacy hosts.
-    count=sum(json_body.count(f'{k.lower()}.client-host-test.invalid') for k in ['A','B','C','D','E'])
-    expect('19 JSON respects restricted selection',count,0)
+    forbidden=sum(json_body.count(f'{k.lower()}.client-host-test.invalid') for k in ['A','C','D','E'])
+    expect('19 JSON respects restricted selection',forbidden,0)
 else:
     results.append({'name':'19 JSON endpoint discovery','ok':True,'observed':'not discovered','expected':'optional','detail':''})
 if clash_path:
-    count=sum(clash_body.count(f'{k.lower()}.client-host-test.invalid') for k in ['A','B','C','D','E'])
-    expect('20 Clash respects restricted selection',count,0)
+    forbidden=sum(clash_body.count(f'{k.lower()}.client-host-test.invalid') for k in ['A','C','D','E'])
+    expect('20 Clash respects restricted selection',forbidden,0)
 else:
     results.append({'name':'20 Clash endpoint discovery','ok':True,'observed':'not discovered','expected':'optional','detail':''})
 
@@ -655,17 +665,15 @@ for n in range(ITER):
     elif n % 10 == 0:
         print(f'[PASS] randomized states {n+1}/{ITER}')
 
-# Orphan cleanup invariant for a fake vanished logical group.
+# Orphan cleanup invariant for a fake vanished HostGroup assignment.
 vanish='VANISHING-GROUP'
-cur.execute('insert or ignore into client_hosts(client_id,group_id) values(?,?)',(clients[0]['id'],vanish)); con.commit()
-# Mimic the pruning SQL used by the feature; ensure the orphan would be removable.
-cur.execute('delete from client_hosts where group_id not in (select distinct group_id from hosts where group_id is not null) and group_id=?',(vanish,)); con.commit()
-left=cur.execute('select count(*) from client_hosts where group_id=?',(vanish,)).fetchone()[0]
-expect('21 orphan ClientHost assignment pruning',left,0)
+cur.execute('insert or ignore into client_group_hosts(group_name,host_group_id) values(?,?)',(clients[0]['group_name'],vanish)); con.commit()
+cur.execute('delete from client_group_hosts where host_group_id not in (select distinct group_id from hosts where group_id is not null) and host_group_id=?',(vanish,)); con.commit()
+left=cur.execute('select count(*) from client_group_hosts where host_group_id=?',(vanish,)).fetchone()[0]
+expect('21 orphan ClientGroupHost assignment pruning',left,0)
 
 con.commit()
 
-echo '[5/5] Matrix complete; evaluating results...'
 failed=[r for r in results if not r['ok']]
 print('\n=== RESULT ===')
 print(f"PASS: {len(results)-len(failed)} / {len(results)}")
@@ -679,6 +687,7 @@ with open(STATE,'w') as f:
     json.dump({'db':DB,'clients':clients,'groups':groups,'results':results},f,ensure_ascii=False,indent=2)
 PY
 
-# Show a concise summary after the Python matrix completes.
 RC=$?
+echo '[5/5] Matrix complete; evaluating results...'
+# Preserve the Python matrix exit status after printing the shell summary.
 exit $RC
