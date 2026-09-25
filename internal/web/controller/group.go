@@ -25,6 +25,8 @@ func (a *GroupController) initRouter(g *gin.RouterGroup) {
 	g.GET("/groups", a.list)
 	g.GET("/groups/:name/emails", a.emails)
 	g.GET("/groups/:name/hosts", a.hosts)
+	g.GET("/groups/:name/inbounds", a.inbounds)
+	g.GET("/groups/:name/inboundPolicy", a.inboundPolicy)
 	g.POST("/groups/create", a.create)
 	g.POST("/groups/rename", a.rename)
 	g.POST("/groups/delete", a.delete)
@@ -32,6 +34,7 @@ func (a *GroupController) initRouter(g *gin.RouterGroup) {
 	g.POST("/groups/bulkAdd", a.bulkAdd)
 	g.POST("/groups/bulkRemove", a.bulkRemove)
 	g.POST("/groups/:name/hosts", a.setHosts)
+	g.POST("/groups/:name/inbounds", a.setInbounds)
 }
 
 func (a *GroupController) hosts(c *gin.Context) {
@@ -54,6 +57,40 @@ func (a *GroupController) setHosts(c *gin.Context) {
 		return
 	}
 	jsonObj(c, body.HostGroupIds, nil)
+	notifyClientsChanged()
+}
+
+func (a *GroupController) inbounds(c *gin.Context) {
+	ids, err := (&service.ClientGroupInboundService{}).GetInboundIDs(c.Param("name"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, ids, nil)
+}
+
+func (a *GroupController) inboundPolicy(c *gin.Context) {
+	policy, err := (&service.ClientGroupInboundService{}).GetPolicy(c.Param("name"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, policy, nil)
+}
+
+func (a *GroupController) setInbounds(c *gin.Context) {
+	var body struct {
+		InboundIds []int `json:"inboundIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if err := (&service.ClientGroupInboundService{}).SetInboundIDs(c.Param("name"), body.InboundIds); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, body.InboundIds, nil)
 	notifyClientsChanged()
 }
 

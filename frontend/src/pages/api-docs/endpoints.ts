@@ -1462,8 +1462,34 @@ export const sections: readonly Section[] = [
           'Replace the HostGroup assignments for the given client group. Assignments are resolved by HostGroup ID and survive Host row recreation.',
         params: [{ name: 'name', in: 'path', type: 'string', desc: 'Group name (URL-encoded).' }],
         body: '{\n  "hostGroupIds": ["cdn-a", "cdn-b"]\n}',
-        response: '{\n  "success": true,\n  "obj": ["cdn-a", "cdn-b"]\n}',
-      },
+        response: '{\n  "success": true,\n  "obj": ["cdn-a", "cdn-b"]\n        }',
+              },
+              {
+                method: 'GET',
+                path: '/panel/api/clients/groups/:name/inbounds',
+                summary:
+                  'Return the inbound IDs explicitly assigned to the given client group. An empty list preserves legacy behavior until group inbound policy is enabled.',
+                params: [{ name: 'name', in: 'path', type: 'string', desc: 'Group name (URL-encoded).' }],
+                response: '{\n  "success": true,\n  "obj": [1, 2]\n}',
+              },
+              {
+                method: 'GET',
+                path: '/panel/api/clients/groups/:name/inboundPolicy',
+                summary:
+                  'Return the group inbound policy state and assigned inbound IDs. Legacy groups report policyState=legacy; explicitly configured groups report policyState=restricted, including an empty list.',
+                params: [{ name: 'name', in: 'path', type: 'string', desc: 'Group name (URL-encoded).' }],
+                response:
+                  '{\n  "success": true,\n  "obj": {\n    "groupName": "customer-a",\n    "policyState": "restricted",\n    "inboundIds": []\n  }\n}',
+              },
+              {
+                method: 'POST',
+                path: '/panel/api/clients/groups/:name/inbounds',
+                summary:
+                  'Replace the inbound assignments for the given client group. The assignments are the logical source for the future derived client-to-inbound runtime projection.',
+                params: [{ name: 'name', in: 'path', type: 'string', desc: 'Group name (URL-encoded).' }],
+                body: '{\n  "inboundIds": [1, 2]\n}',
+                response: '{\n  "success": true,\n  "obj": [1, 2]\n}',
+              },
       {
         method: 'POST',
         path: '/panel/api/clients/groups/create',

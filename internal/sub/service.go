@@ -77,6 +77,8 @@ type SubService struct {
 	// fields (encryption, method, version, …) from it.
 	settingsByInbound    map[int]map[string]any
 	clientHostSelections map[string]clientHostSelection
+	clientGroupInbounds  map[string]map[int]struct{}
+	clientGroupPolicies  map[string]bool
 }
 
 // NewSubService creates a new subscription service with the given configuration.
@@ -113,6 +115,8 @@ func (s *SubService) PrepareForRequest(host string) {
 	s.fullyPrimedInbounds = map[int]bool{}
 	s.settingsByInbound = map[int]map[string]any{}
 	s.clientHostSelections = map[string]clientHostSelection{}
+	s.clientGroupInbounds = map[string]map[int]struct{}{}
+	s.clientGroupPolicies = map[string]bool{}
 	s.loadNodes()
 	s.loadRemarkSettings()
 	s.subCalendarExpireInclusive, _ = s.settingService.GetSubCalendarExpireInclusive()
@@ -438,6 +442,9 @@ func (s *SubService) getSubs(subId string) ([]string, []string, int64, xray.Clie
 		// Host overrides apply AFTER fallback projection so a host's
 		// address/TLS wins over the projected master stream.
 		for _, client := range clients {
+			if !s.clientAllowedInbound(client, inbound.Id) {
+				continue
+			}
 			if client.Enable {
 				hasEnabledClient = true
 			}
@@ -634,12 +641,67 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		WHERE
 			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic')
 			AND clients.sub_id = ? AND inbounds.enable = ?
+			AND (
+				COALESCE(clients.group_name, '') = ''
+				OR NOT EXISTS (
+					SELECT 1 FROM client_groups policy_group
+					WHERE policy_group.name = clients.group_name
+					  AND policy_group.policy_state = 'restricted'
+				)
+				OR EXISTS (
+					SELECT 1 FROM client_group_inbounds policy
+					WHERE policy.group_name = clients.group_name
+					  AND policy.inbound_id = inbounds.id
+				)
+			)
 	)`, subId, true).Order("sub_sort_index ASC").Order("id ASC").Find(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}
 	s.indexStatsBySubId(subId)
 	return inbounds, nil
+}
+
+func (s *SubService) clientAllowedInbound(client model.Client, inboundID int) bool {
+	group := strings.TrimSpace(client.Group)
+	if group == "" || database.GetDB() == nil {
+		return true
+	}
+	if assigned, ok := s.clientGroupPolicies[group]; ok {
+		if !assigned {
+			return true
+		}
+		return containsInboundID(s.clientGroupInbounds[group], inboundID)
+	}
+	var ids []int
+	var policyState string
+	err := database.GetDB().Table("client_groups").
+		Where("name = ?", group).
+		Pluck("policy_state", &policyState).Error
+	if err == nil && policyState != model.ClientGroupPolicyRestricted {
+		s.clientGroupPolicies[group] = false
+		return true
+	}
+	err = database.GetDB().Model(&model.ClientGroupInbound{}).
+		Where("group_name = ?", group).
+		Pluck("inbound_id", &ids).Error
+	if err != nil {
+		logger.Warning("SubService - clientAllowedInbound:", err)
+		s.clientGroupPolicies[group] = true
+		return false
+	}
+	allowed := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		allowed[id] = struct{}{}
+	}
+	s.clientGroupInbounds[group] = allowed
+	s.clientGroupPolicies[group] = true
+	return containsInboundID(allowed, inboundID)
+}
+
+func containsInboundID(ids map[int]struct{}, id int) bool {
+	_, ok := ids[id]
+	return ok
 }
 
 // indexStatsBySubId loads the traffic rows for just this subscriber's clients

@@ -964,6 +964,7 @@ func (ClientHost) TableName() string { return "client_hosts" }
 type ClientGroup struct {
 	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name      string `json:"name" gorm:"uniqueIndex;not null"`
+	PolicyState string `json:"policyState" gorm:"column:policy_state;default:legacy;index"`
 	ResetUp   int64  `json:"resetUp" gorm:"column:reset_up;default:0"`
 	ResetDown int64  `json:"resetDown" gorm:"column:reset_down;default:0"`
 	CreatedAt int64  `json:"createdAt" gorm:"autoCreateTime:milli"`
@@ -972,12 +973,31 @@ type ClientGroup struct {
 
 func (ClientGroup) TableName() string { return "client_groups" }
 
+const (
+	ClientGroupPolicyLegacy    = "legacy"
+	ClientGroupPolicyRestricted = "restricted"
+)
+
 type ClientGroupHost struct {
 	GroupName   string `json:"groupName" gorm:"primaryKey;column:group_name;index"`
 	HostGroupId string `json:"hostGroupId" gorm:"primaryKey;column:host_group_id;index"`
 }
 
 func (ClientGroupHost) TableName() string { return "client_group_hosts" }
+
+type ClientGroupInbound struct {
+	GroupName string `json:"groupName" gorm:"primaryKey;column:group_name;index"`
+	InboundId int    `json:"inboundId" gorm:"primaryKey;column:inbound_id;index"`
+}
+
+func (ClientGroupInbound) TableName() string { return "client_group_inbounds" }
+
+type ClientGroupMembership struct {
+	ClientId  int    `json:"clientId" gorm:"primaryKey;column:client_id;index"`
+	GroupName string `json:"groupName" gorm:"primaryKey;column:group_name;index"`
+}
+
+func (ClientGroupMembership) TableName() string { return "client_group_memberships" }
 
 // MarshalJSON emits the reverse column as a nested JSON object rather than an
 // escaped JSON-text string, matching the same convention Inbound uses for its
