@@ -169,7 +169,11 @@ export default function GroupsPage() {
   const [groupHostAssignments, setGroupHostAssignments] = useState<Record<string, string[]>>({});
   const hostAssignmentMut = useMutation({
     mutationFn: ({ name, hostGroupIds }: { name: string; hostGroupIds: string[] }) =>
-      HttpUtil.post(`/panel/api/clients/groups/${encodeURIComponent(name)}/hosts`, { hostGroupIds }, JSON_HEADERS),
+      HttpUtil.post(
+        `/panel/api/clients/groups/${encodeURIComponent(name)}/hosts`,
+        { hostGroupIds },
+        JSON_HEADERS,
+      ),
     onSuccess: (msg) => {
       if (msg?.success) setHostAssignmentOpen(false);
     },
