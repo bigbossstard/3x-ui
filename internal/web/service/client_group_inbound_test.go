@@ -48,33 +48,10 @@ func TestClientGroupInboundAssignmentsFollowGroupLifecycle(t *testing.T) {
 		t.Fatalf("create group: %v", err)
 	}
 
-	func TestClientGroupInboundEmptyAssignmentIsRestricted(t *testing.T) {
-		setupConflictDB(t)
-		db := database.GetDB()
-		if err := db.Create(&model.ClientGroup{Name: "empty"}).Error; err != nil {
-			t.Fatalf("create group: %v", err)
-		}
-		if err := (&ClientGroupInboundService{}).SetInboundIDs("empty", nil); err != nil {
-			t.Fatalf("set empty assignment: %v", err)
-		}
-		var group model.ClientGroup
-		if err := db.Where("name = ?", "empty").First(&group).Error; err != nil {
-			t.Fatalf("load group: %v", err)
-		}
-		if group.PolicyState != model.ClientGroupPolicyRestricted {
-			t.Fatalf("policy state = %q, want %q", group.PolicyState, model.ClientGroupPolicyRestricted)
-		}
-		policy, err := (&ClientGroupInboundService{}).GetPolicy("empty")
-		if err != nil {
-			t.Fatalf("get policy: %v", err)
-		}
-		if policy.PolicyState != model.ClientGroupPolicyRestricted || len(policy.InboundIDs) != 0 {
-			t.Fatalf("policy = %+v, want restricted empty policy", policy)
-		}
-	}
 	if err := db.Create(&model.Inbound{Remark: "one"}).Error; err != nil {
 		t.Fatalf("create inbound: %v", err)
 	}
+
 	if err := (&ClientGroupInboundService{}).SetInboundIDs("old", []int{1}); err != nil {
 		t.Fatalf("set assignments: %v", err)
 	}
@@ -98,5 +75,30 @@ func TestClientGroupInboundAssignmentsFollowGroupLifecycle(t *testing.T) {
 	}
 	if len(ids) != 0 {
 		t.Fatalf("deleted group assignments = %v, want empty", ids)
+	}
+}
+
+func TestClientGroupInboundEmptyAssignmentIsRestricted(t *testing.T) {
+	setupConflictDB(t)
+	db := database.GetDB()
+	if err := db.Create(&model.ClientGroup{Name: "empty"}).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := (&ClientGroupInboundService{}).SetInboundIDs("empty", nil); err != nil {
+		t.Fatalf("set empty assignment: %v", err)
+	}
+	var group model.ClientGroup
+	if err := db.Where("name = ?", "empty").First(&group).Error; err != nil {
+		t.Fatalf("load group: %v", err)
+	}
+	if group.PolicyState != model.ClientGroupPolicyRestricted {
+		t.Fatalf("policy state = %q, want %q", group.PolicyState, model.ClientGroupPolicyRestricted)
+	}
+	policy, err := (&ClientGroupInboundService{}).GetPolicy("empty")
+	if err != nil {
+		t.Fatalf("get policy: %v", err)
+	}
+	if policy.PolicyState != model.ClientGroupPolicyRestricted || len(policy.InboundIDs) != 0 {
+		t.Fatalf("policy = %+v, want restricted empty policy", policy)
 	}
 }
