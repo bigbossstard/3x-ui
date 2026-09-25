@@ -946,10 +946,19 @@
       "renewOnDayDesc": "Perpanjang pada tanggal ini setiap bulan kalender, pada tengah malam menurut zona waktu panel, alih-alih setiap N hari. Bulan yang terlalu pendek untuk tanggal yang dipilih diperpanjang pada hari terakhirnya. 0 mempertahankan mode interval hari.",
       "renewsUsed": "Perpanjangan terpakai",
       "tuicTotalGBDesc": "TUIC does not support per-client traffic limits; set traffic limit on the inbound instead.",
-      "bulkAdTagHint": "Masukkan tag heksadesimal 32 karakter untuk mengatur, atau 'none' untuk menghapus pada MTProto."
+      "bulkAdTagHint": "Masukkan tag heksadesimal 32 karakter untuk mengatur, atau 'none' untuk menghapus pada MTProto.",
+      "attachedHosts": "Attached hosts",
+      "selectHost": "Select host groups",
+      "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
+      "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
+      "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
     },
     "groups": {
       "name": "Nama",
+      "assignHostGroups": "Tetapkan host",
+      "hostGroupsFor": "Host untuk {name}",
+      "hostGroups": "Host",
+      "hostsEmptyMeansLegacy": "Biarkan kosong untuk menggunakan perilaku lama dengan semua host",
       "clientCount": "Klien",
       "totalGroups": "Total grup",
       "totalGroupedClients": "Klien dengan grup",

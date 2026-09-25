@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/database"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
@@ -167,5 +168,71 @@ func TestBulkCreate_DisabledOnNodeSkipsAddClient(t *testing.T) {
 		t.Fatalf("NodeSyncState: %v", err)
 	} else if !dirty {
 		t.Fatal("disabled node create must leave node dirty for reconcile")
+	}
+}
+
+func TestExportImportPreservesClientHostAssignments(t *testing.T) {
+	setupBulkDB(t)
+	svc := &ClientService{}
+	inboundSvc := &InboundService{}
+
+	ib := mkInbound(t, 26004, model.VLESS, `{"clients":[]}`)
+	if err := database.GetDB().Create(&model.Host{
+		GroupId: "portable-host", InboundId: ib.Id, Remark: "Portable", Address: "portable.example.com", Port: 8443,
+		Security: "tls",
+	}).Error; err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+
+	const email = "portable@host"
+	const subID = "sub-portable-host"
+	if _, err := svc.Create(inboundSvc, &ClientCreatePayload{
+		Client:     model.Client{Email: email, SubID: subID, Enable: true, ID: "12121212-1212-4121-8121-121212121212"},
+		InboundIds: []int{ib.Id},
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	rec := lookupClientRecord(t, email)
+	if err := (&ClientHostService{}).SetGroupIDs(rec.Id, []string{"portable-host"}); err != nil {
+		t.Fatalf("assign host group: %v", err)
+	}
+
+	exported, err := svc.ExportAll()
+	if err != nil {
+		t.Fatalf("ExportAll: %v", err)
+	}
+	if len(exported) != 1 || len(exported[0].HostGroupIds) != 1 || exported[0].HostGroupIds[0] != "portable-host" {
+		t.Fatalf("exported host assignments = %#v", exported)
+	}
+
+	raw, err := json.Marshal(exported)
+	if err != nil {
+		t.Fatalf("marshal export: %v", err)
+	}
+	var roundTrip []ClientCreatePayload
+	if err := json.Unmarshal(raw, &roundTrip); err != nil {
+		t.Fatalf("unmarshal export: %v", err)
+	}
+	if len(roundTrip[0].HostGroupIds) != 1 || roundTrip[0].HostGroupIds[0] != "portable-host" {
+		t.Fatalf("round-trip host assignments = %#v", roundTrip[0].HostGroupIds)
+	}
+
+	if _, err := svc.Delete(inboundSvc, rec.Id, false); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	res, _, err := svc.ImportClients(inboundSvc, roundTrip)
+	if err != nil {
+		t.Fatalf("ImportClients: %v", err)
+	}
+	if res.Created != 1 || len(res.Skipped) != 0 {
+		t.Fatalf("ImportClients result=%+v", res)
+	}
+	imported := lookupClientRecord(t, email)
+	got, err := (&ClientHostService{}).GetGroupIDs(imported.Id)
+	if err != nil {
+		t.Fatalf("GetGroupIDs after import: %v", err)
+	}
+	if len(got) != 1 || got[0] != "portable-host" {
+		t.Fatalf("imported host assignments = %#v", got)
 	}
 }

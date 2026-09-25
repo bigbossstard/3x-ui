@@ -399,3 +399,7 @@ type HostGroup struct {
 	MihomoX25519           bool     `json:"mihomoX25519"`
 	ShuffleHost            bool     `json:"shuffleHost"`
 }
+
+type ClientHostAssignment struct {
+	HostGroupIds []string `json:"hostGroupIds"`
+}

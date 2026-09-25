@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - client-host
     tags-ignore:
       - "v*"
     paths:
@@ -11,14 +12,20 @@ on:
       - "go.mod"
       - "go.sum"
       - "frontend/**"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "**.go"
       - "go.mod"
       - "go.sum"
       - "frontend/**"
+      - ".github/workflows/**"
   schedule:
     - cron: "18 2 * * 2"
+
+concurrency:
+  group: client-host-codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
@@ -26,6 +33,7 @@ jobs:
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     env:
       CODEQL_ACTION_FILE_COVERAGE_ON_PRS: true
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     permissions:
       security-events: write
       packages: read

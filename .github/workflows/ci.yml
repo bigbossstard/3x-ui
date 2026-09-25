@@ -9,10 +9,11 @@ on:
       - "frontend/**"
       - ".nvmrc"
       - "Makefile"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/*.yml"
   push:
     branches:
       - main
+      - client-host
     paths:
       - "**.go"
       - "go.mod"
@@ -20,13 +21,29 @@ on:
       - "frontend/**"
       - ".nvmrc"
       - "Makefile"
-      - ".github/workflows/ci.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: client-host-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  client-host-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate client-host shell scripts
+        run: |
+          set -euo pipefail
+          bash -n tools/update-client-host.sh
+          bash -n tools/install-client-host.sh
+          bash -n tools/xch.sh
+          bash -n tools/client-host-matrix-tester.sh
+
   go-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +59,7 @@ jobs:
           go test -shuffle=on -count=1 $(cat /tmp/go-packages.txt)
 
   postgres-durable-first:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -93,6 +111,7 @@ jobs:
           fi
 
   codegen:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -110,6 +129,7 @@ jobs:
         run: git diff --exit-code -- frontend/src/generated frontend/public/openapi.json
 
   govulncheck:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -126,6 +146,7 @@ jobs:
 
   # Race + shuffle hygiene gate: data races and order-dependent tests fail the build.
   race:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -144,6 +165,7 @@ jobs:
   # Brief native-fuzz smoke on the security-/parser-critical decoders. Each runs the
   # generated corpus plus 30s of exploration; a crash here is a real input-handling bug.
   fuzz-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -159,6 +181,7 @@ jobs:
           go test -run '^$' -fuzz 'FuzzDecodeCertPin$' -fuzztime=30s ./internal/web/runtime/
 
   golangci:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -174,6 +197,7 @@ jobs:
           version: latest
 
   frontend:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

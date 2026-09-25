@@ -946,10 +946,19 @@
       "renewOnDayDesc": "每個自然月的這一天午夜（依面板時區）續期，而不是每 N 天續期一次。若當月沒有該日期，則在當月最後一天續期。填 0 保持按天間隔模式。",
       "renewsUsed": "已用續期次數",
       "tuicTotalGBDesc": "TUIC does not support per-client traffic limits; set traffic limit on the inbound instead.",
-      "bulkAdTagHint": "輸入 32 位十六進位標籤以設定，或輸入 'none' 清除 MTProto 贊助頻道。"
+      "bulkAdTagHint": "輸入 32 位十六進位標籤以設定，或輸入 'none' 清除 MTProto 贊助頻道。",
+      "attachedHosts": "Attached hosts",
+      "selectHost": "Select host groups",
+      "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
+      "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
+      "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
     },
     "groups": {
       "name": "名稱",
+      "assignHostGroups": "指派主機",
+      "hostGroupsFor": "{name} 的主機",
+      "hostGroups": "主機",
+      "hostsEmptyMeansLegacy": "留空以使用舊版的全部主機行為",
       "clientCount": "客戶端",
       "totalGroups": "群組總數",
       "totalGroupedClients": "有群組的客戶端",

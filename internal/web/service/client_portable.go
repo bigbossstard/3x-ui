@@ -33,6 +33,17 @@ func (s *ClientService) ExportAll() ([]ClientCreatePayload, error) {
 		ids = append(ids, rows[i].Id)
 	}
 
+	hostAssignments := make(map[int][]string, len(rows))
+	for _, batch := range chunkInts(ids, sqlInChunk) {
+		var links []model.ClientHost
+		if err := db.Where("client_id IN ?", batch).Order("group_id ASC").Find(&links).Error; err != nil {
+			return nil, err
+		}
+		for _, l := range links {
+			hostAssignments[l.ClientId] = append(hostAssignments[l.ClientId], l.GroupId)
+		}
+	}
+
 	attachments := make(map[int][]int, len(rows))
 	for _, batch := range chunkInts(ids, sqlInChunk) {
 		var links []model.ClientInbound
@@ -51,10 +62,15 @@ func (s *ClientService) ExportAll() ([]ClientCreatePayload, error) {
 		if flow, err := s.EffectiveFlow(db, rows[i].Id); err == nil && flow != "" {
 			client.Flow = flow
 		}
+		hostGroupIds := hostAssignments[rows[i].Id]
+		if hostGroupIds == nil {
+			hostGroupIds = []string{}
+		}
 		out = append(out, ClientCreatePayload{
-			Client:     *client,
-			InboundIds: attachments[rows[i].Id],
-			LimitHwid:  rows[i].LimitHwid,
+			Client:       *client,
+			InboundIds:   attachments[rows[i].Id],
+			HostGroupIds: hostGroupIds,
+			LimitHwid:    rows[i].LimitHwid,
 		})
 	}
 	return out, nil
@@ -71,21 +87,25 @@ func (s *ClientService) ImportClients(inboundSvc *InboundService, items []Client
 		return result, false, nil
 	}
 
-	attached := make([]ClientCreatePayload, 0, len(items))
-	orphans := make([]ClientCreatePayload, 0)
-	for i := range items {
-		if len(items[i].InboundIds) > 0 {
-			attached = append(attached, items[i])
-		} else {
-			orphans = append(orphans, items[i])
-		}
-	}
-
 	skip := func(email, reason string) {
 		if strings.TrimSpace(email) == "" {
 			email = "(missing email)"
 		}
 		result.Skipped = append(result.Skipped, BulkCreateReport{Email: email, Reason: reason})
+	}
+
+	attached := make([]ClientCreatePayload, 0, len(items))
+	orphans := make([]ClientCreatePayload, 0)
+	for i := range items {
+		if err := (&ClientHostService{}).ValidateGroupIDs(items[i].HostGroupIds); err != nil {
+			skip(items[i].Client.Email, err.Error())
+			continue
+		}
+		if len(items[i].InboundIds) > 0 {
+			attached = append(attached, items[i])
+		} else {
+			orphans = append(orphans, items[i])
+		}
 	}
 
 	needRestart := false
@@ -97,6 +117,23 @@ func (s *ClientService) ImportClients(inboundSvc *InboundService, items []Client
 		needRestart = needRestart || nr
 		result.Created += sub.Created
 		result.Skipped = append(result.Skipped, sub.Skipped...)
+
+		skippedEmails := make(map[string]struct{}, len(sub.Skipped))
+		for _, item := range sub.Skipped {
+			skippedEmails[strings.ToLower(strings.TrimSpace(item.Email))] = struct{}{}
+		}
+		for _, item := range attached {
+			if len(item.HostGroupIds) == 0 {
+				continue
+			}
+			email := strings.ToLower(strings.TrimSpace(item.Client.Email))
+			if _, skipped := skippedEmails[email]; skipped {
+				continue
+			}
+			if err := (&ClientHostService{}).SetGroupIDsByEmail(item.Client.Email, item.HostGroupIds); err != nil {
+				return result, needRestart, err
+			}
+		}
 	}
 
 	db := database.GetDB()
@@ -175,6 +212,11 @@ func (s *ClientService) ImportClients(inboundSvc *InboundService, items []Client
 				return result, needRestart, err
 			}
 		}
+		if len(orphans[i].HostGroupIds) > 0 {
+			if err := (&ClientHostService{}).SetGroupIDs(rec.Id, orphans[i].HostGroupIds); err != nil {
+				return result, needRestart, err
+			}
+		}
 		result.Created++
 	}
 
@@ -217,6 +259,9 @@ func (s *ClientService) DeleteOrphans() (int, error) {
 		}
 		for _, batch := range chunkInts(ids, sqlInChunk) {
 			if e := tx.Where("client_id IN ?", batch).Delete(&model.ClientInbound{}).Error; e != nil {
+				return e
+			}
+			if e := tx.Where("client_id IN ?", batch).Delete(&model.ClientHost{}).Error; e != nil {
 				return e
 			}
 			if e := tx.Where("client_id IN ?", batch).Delete(&model.ClientExternalLink{}).Error; e != nil {

@@ -1278,9 +1278,10 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 	}
 
 	type prepared struct {
-		client     model.Client
-		inboundIds []int
-		limitHwid  int
+		client       model.Client
+		inboundIds   []int
+		hostGroupIds []string
+		limitHwid    int
 	}
 	prep := make([]prepared, 0, len(payloads))
 	emails := make([]string, 0, len(payloads))
@@ -1319,6 +1320,10 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 			skip(email, "at least one inbound is required")
 			continue
 		}
+		if err := (&ClientHostService{}).ValidateGroupIDs(payloads[i].HostGroupIds); err != nil {
+			skip(email, err.Error())
+			continue
+		}
 
 		client.Email = email
 		if client.SubID == "" {
@@ -1343,7 +1348,12 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 		seenEmail[le] = struct{}{}
 		seenSubID[client.SubID] = le
 
-		prep = append(prep, prepared{client: client, inboundIds: payloads[i].InboundIds, limitHwid: payloads[i].LimitHwid})
+		prep = append(prep, prepared{
+			client:       client,
+			inboundIds:   payloads[i].InboundIds,
+			hostGroupIds: payloads[i].HostGroupIds,
+			limitHwid:    payloads[i].LimitHwid,
+		})
 		emails = append(emails, email)
 		subIDs = append(subIDs, client.SubID)
 	}
@@ -1496,6 +1506,12 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 		if err := s.setClientLimitHwidByEmail(nil, prep[idx].client.Email, prep[idx].limitHwid); err != nil {
 			skip(prep[idx].client.Email, err.Error())
 			continue
+		}
+		if len(prep[idx].hostGroupIds) > 0 {
+			if err := (&ClientHostService{}).SetGroupIDsByEmail(prep[idx].client.Email, prep[idx].hostGroupIds); err != nil {
+				skip(prep[idx].client.Email, err.Error())
+				continue
+			}
 		}
 		createdEmails = append(createdEmails, prep[idx].client.Email)
 		result.Created++
