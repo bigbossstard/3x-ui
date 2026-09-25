@@ -52,6 +52,7 @@ func migrationModels() []any {
 		&model.ClientHwid{},
 		&model.ClientExternalLink{},
 		&model.ClientGroup{},
+		&model.ClientGroupHost{},
 		&model.InboundFallback{},
 		&model.Host{},
 		&model.NodeClientTraffic{},

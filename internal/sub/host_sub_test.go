@@ -540,29 +540,6 @@ func TestSub_ClientHostAssignmentDoesNotFallbackOnMissingInboundHost(t *testing.
 		t.Fatalf("load client: %v", err)
 	}
 
-	func TestSub_ClientGroupHostAssignmentFiltersHosts(t *testing.T) {
-		seedSubDB(t)
-		ib := seedSubInbound(t, "s-group-host", "grouped", 4453, 1, wsTLSStream)
-		seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-a", SortOrder: 1, Remark: "A", Address: "a.example.com", Port: 8443, Security: "tls"})
-		seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-b", SortOrder: 2, Remark: "B", Address: "b.example.com", Port: 8443, Security: "tls"})
-		if err := database.GetDB().Model(&model.ClientRecord{}).
-			Where("email = ?", "grouped@e").
-			Update("group_name", "premium").Error; err != nil {
-			t.Fatalf("set client group: %v", err)
-		}
-		if err := database.GetDB().Create(&model.ClientGroupHost{GroupName: "premium", HostGroupId: "group-b"}).Error; err != nil {
-			t.Fatalf("assign client group host: %v", err)
-		}
-
-		links, _, _, _, err := NewSubService("").GetSubs("s-group-host", "req.example.com")
-		if err != nil {
-			t.Fatalf("GetSubs: %v", err)
-		}
-		joined := strings.Join(links, "\n")
-		if !strings.Contains(joined, "b.example.com:8443") || strings.Contains(joined, "a.example.com:8443") {
-			t.Fatalf("group host assignment should select only group-b: %s", joined)
-		}
-	}
 	if err := database.GetDB().Create(&model.ClientHost{ClientId: client.Id, GroupId: "missing-here"}).Error; err != nil {
 		t.Fatalf("assign host group: %v", err)
 	}
@@ -573,5 +550,29 @@ func TestSub_ClientHostAssignmentDoesNotFallbackOnMissingInboundHost(t *testing.
 	}
 	if len(links) != 0 {
 		t.Fatalf("restricted client with no matching Host must not fall back to the inbound link: %v", links)
+	}
+}
+
+func TestSub_ClientGroupHostAssignmentFiltersHosts(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-group-host", "grouped", 4453, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-a", SortOrder: 1, Remark: "A", Address: "a.example.com", Port: 8443, Security: "tls"})
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-b", SortOrder: 2, Remark: "B", Address: "b.example.com", Port: 8443, Security: "tls"})
+	if err := database.GetDB().Model(&model.ClientRecord{}).
+		Where("email = ?", "grouped@e").
+		Update("group_name", "premium").Error; err != nil {
+		t.Fatalf("set client group: %v", err)
+	}
+	if err := database.GetDB().Create(&model.ClientGroupHost{GroupName: "premium", HostGroupId: "group-b"}).Error; err != nil {
+		t.Fatalf("assign client group host: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-group-host", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	joined := strings.Join(links, "\n")
+	if !strings.Contains(joined, "b.example.com:8443") || strings.Contains(joined, "a.example.com:8443") {
+		t.Fatalf("group host assignment should select only group-b: %s", joined)
 	}
 }
