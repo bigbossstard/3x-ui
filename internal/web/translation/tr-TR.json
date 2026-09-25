@@ -952,12 +952,12 @@
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
       "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
       "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
-},
+    },
     "groups": {
       "name": "İsim",
-      "assignHostGroups": "Ana bilgisayar gruplarını ata",
-      "hostGroupsFor": "{name} için ana bilgisayar grupları",
-      "hostGroups": "Ana bilgisayar gruplar?",
+      "assignHostGroups": "Host atama",
+      "hostGroupsFor": "{name} için hostlar",
+      "hostGroups": "Hostlar",
       "hostsEmptyMeansLegacy": "Tüm ana bilgisayarların eski davranışını kullanmak için boş bırakın",
       "clientCount": "Kullanıcılar",
       "totalGroups": "Toplam grup",

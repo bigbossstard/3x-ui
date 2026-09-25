@@ -808,7 +808,6 @@
       "remaining": "المتبقي",
       "duration": "المدة",
       "attachedInbounds": "الاتصالات الواردة المرتبطة",
-
       "attachedHosts": "المضيفات المرتبطة",
       "selectHost": "حدد مجموعات المضيفين",
       "hostsEmptyMeansAll": "اتركه فارغًا لاستخدام جميع المضيفين من الاتصالات الواردة المرتبطة.",
@@ -956,9 +955,9 @@
     },
     "groups": {
       "name": "الاسم",
-      "assignHostGroups": "تعيين مجموعات المضيفين",
-      "hostGroupsFor": "مجموعات المضيفين لـ {name}",
-      "hostGroups": "مجموعات المضيفين",
+      "assignHostGroups": "تعيين المضيفين",
+      "hostGroupsFor": "المضيفين لـ {name}",
+      "hostGroups": "المضيفين",
       "hostsEmptyMeansLegacy": "اتركه فارغًا لاستخدام السلوك القديم مع جميع المضيفين",
       "clientCount": "العملاء",
       "totalGroups": "إجمالي المجموعات",

@@ -952,12 +952,12 @@
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
       "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
       "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
-},
+    },
     "groups": {
       "name": "名稱",
-      "assignHostGroups": "指派主機群組",
-      "hostGroupsFor": "{name} 的主機群組",
-      "hostGroups": "主機群組",
+      "assignHostGroups": "指派主機",
+      "hostGroupsFor": "{name} 的主機",
+      "hostGroups": "主機",
       "hostsEmptyMeansLegacy": "留空以使用舊版的全部主機行為",
       "clientCount": "客戶端",
       "totalGroups": "群組總數",

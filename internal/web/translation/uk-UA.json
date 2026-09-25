@@ -952,12 +952,12 @@
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
       "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
       "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
-},
+    },
     "groups": {
       "name": "Назва",
-      "assignHostGroups": "Призначити групи хостів",
-      "hostGroupsFor": "Групи хостів для {name}",
-      "hostGroups": "Групи хостів",
+      "assignHostGroups": "Призначити хости",
+      "hostGroupsFor": "Хости для {name}",
+      "hostGroups": "Хости",
       "hostsEmptyMeansLegacy": "Залиште порожнім, щоб використовувати всі хости за старою логікою",
       "clientCount": "Клієнти",
       "totalGroups": "Всього груп",

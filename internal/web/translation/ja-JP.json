@@ -952,12 +952,12 @@
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
       "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
       "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
-},
+    },
     "groups": {
       "name": "名前",
-      "assignHostGroups": "ホストグループを割り当て",
-      "hostGroupsFor": "{name} のホストグループ",
-      "hostGroups": "ホストグループ",
+      "assignHostGroups": "ホストを割り当て",
+      "hostGroupsFor": "{name} のホスト",
+      "hostGroups": "ホスト",
       "hostsEmptyMeansLegacy": "空欄にすると従来どおりすべてのホストを使用します",
       "clientCount": "クライアント",
       "totalGroups": "グループ合計",
