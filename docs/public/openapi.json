@@ -9383,6 +9383,23 @@
         }
       }
     },
+    "/panel/api/clients/groups/{name}/hosts": {
+      "get": {
+        "tags": ["Clients"],
+        "summary": "Return the HostGroup IDs assigned to the given client group. An empty list preserves legacy all-host subscription behavior.",
+        "operationId": "get_panel_api_clients_groups_name_hosts",
+        "parameters": [{"name": "name", "in": "path", "required": true, "description": "Group name (URL-encoded).", "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Successful response", "content": {"application/json": {"schema": {"type": "object"}, "example": {"success": true, "obj": ["cdn-a", "cdn-b"]}}}}}
+      },
+      "post": {
+        "tags": ["Clients"],
+        "summary": "Replace the HostGroup assignments for the given client group. Assignments are resolved by HostGroup ID and survive Host row recreation.",
+        "operationId": "post_panel_api_clients_groups_name_hosts",
+        "parameters": [{"name": "name", "in": "path", "required": true, "description": "Group name (URL-encoded).", "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object"}, "example": {"hostGroupIds": ["cdn-a", "cdn-b"]}}}},
+        "responses": {"200": {"description": "Successful response", "content": {"application/json": {"schema": {"type": "object"}, "example": {"success": true, "obj": ["cdn-a", "cdn-b"]}}}}}
+      }
+    },
     "/panel/api/clients/groups/create": {
       "post": {
         "tags": [

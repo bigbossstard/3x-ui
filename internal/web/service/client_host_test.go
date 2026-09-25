@@ -54,3 +54,41 @@ func TestClientHostServiceSetAndClear(t *testing.T) {
 		t.Fatal("missing host group unexpectedly accepted")
 	}
 }
+
+func TestClientGroupHostAssignmentsFollowGroupLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", dir)
+	if err := database.InitDB(filepath.Join(dir, "x-ui.db")); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	t.Cleanup(func() { _ = database.CloseDB() })
+
+	db := database.GetDB()
+	if err := db.Create(&model.ClientGroup{Name: "premium"}).Error; err != nil {
+		t.Fatalf("create client group: %v", err)
+	}
+	if err := db.Create(&model.Host{GroupId: "cdn-a", InboundId: 1, Remark: "cdn-a"}).Error; err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+	svc := &ClientHostService{}
+	if err := svc.SetGroupAssignmentIDs("premium", []string{"cdn-a"}); err != nil {
+		t.Fatalf("set group assignments: %v", err)
+	}
+	if _, err := (&ClientService{}).RenameGroup("premium", "renamed"); err != nil {
+		t.Fatalf("rename group: %v", err)
+	}
+	ids, err := svc.GetGroupAssignmentIDs("renamed")
+	if err != nil || len(ids) != 1 || ids[0] != "cdn-a" {
+		t.Fatalf("assignments after rename = %#v, %v", ids, err)
+	}
+	if _, err := (&ClientService{}).DeleteGroup("renamed"); err != nil {
+		t.Fatalf("delete group: %v", err)
+	}
+	ids, err = svc.GetGroupAssignmentIDs("renamed")
+	if err != nil {
+		t.Fatalf("get assignments after delete: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("assignments after delete = %#v, want empty", ids)
+	}
+}

@@ -106,7 +106,6 @@ uninstall() {
     [[ -s "$original_backup" ]] ||
       die "Original 3x-ui binary backup not found. Refusing to uninstall without a saved pre-client-host binary."
   fi
-  
 
   exec 9>"$LOCK_FILE"
   flock -n 9 || die "Another client-host operation is already running."

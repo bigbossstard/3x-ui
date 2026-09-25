@@ -952,9 +952,13 @@
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
       "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
       "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
-},
+    },
     "groups": {
       "name": "Nome",
+      "assignHostGroups": "Atribuir hosts",
+      "hostGroupsFor": "Hosts para {name}",
+      "hostGroups": "Hosts",
+      "hostsEmptyMeansLegacy": "Deixe vazio para usar o comportamento antigo com todos os hosts",
       "clientCount": "Clientes",
       "totalGroups": "Total de grupos",
       "totalGroupedClients": "Clientes com grupo",

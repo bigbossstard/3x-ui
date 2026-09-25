@@ -952,9 +952,13 @@
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
       "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
       "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
-},
+    },
     "groups": {
       "name": "Tên",
+      "assignHostGroups": "Gán host",
+      "hostGroupsFor": "Host cho {name}",
+      "hostGroups": "Host",
+      "hostsEmptyMeansLegacy": "Để trống để dùng hành vi cũ với tất cả máy chủ",
       "clientCount": "Client",
       "totalGroups": "Tổng số nhóm",
       "totalGroupedClients": "Client có nhóm",

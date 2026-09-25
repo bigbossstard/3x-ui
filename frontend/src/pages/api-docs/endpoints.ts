@@ -1448,6 +1448,23 @@ export const sections: readonly Section[] = [
         response: '{\n  "success": true,\n  "obj": ["alice", "bob", "carol"]\n}',
       },
       {
+        method: 'GET',
+        path: '/panel/api/clients/groups/:name/hosts',
+        summary:
+          'Return the HostGroup IDs assigned to the given client group. An empty list preserves legacy all-host subscription behavior.',
+        params: [{ name: 'name', in: 'path', type: 'string', desc: 'Group name (URL-encoded).' }],
+        response: '{\n  "success": true,\n  "obj": ["cdn-a", "cdn-b"]\n}',
+      },
+      {
+        method: 'POST',
+        path: '/panel/api/clients/groups/:name/hosts',
+        summary:
+          'Replace the HostGroup assignments for the given client group. Assignments are resolved by HostGroup ID and survive Host row recreation.',
+        params: [{ name: 'name', in: 'path', type: 'string', desc: 'Group name (URL-encoded).' }],
+        body: '{\n  "hostGroupIds": ["cdn-a", "cdn-b"]\n}',
+        response: '{\n  "success": true,\n  "obj": ["cdn-a", "cdn-b"]\n}',
+      },
+      {
         method: 'POST',
         path: '/panel/api/clients/groups/create',
         summary:

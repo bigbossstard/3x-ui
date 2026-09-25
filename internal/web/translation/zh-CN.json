@@ -952,9 +952,13 @@
       "hostsEmptyMeansAll": "Leave empty to use all hosts from the attached inbounds.",
       "hostGroupDisabledOnly": "Only on disabled inbounds: {inbounds}",
       "hostGroupAlsoDisabled": "Also on disabled inbounds: {inbounds}"
-},
+    },
     "groups": {
       "name": "名称",
+      "assignHostGroups": "分配主机",
+      "hostGroupsFor": "{name} 的主机",
+      "hostGroups": "主机",
+      "hostsEmptyMeansLegacy": "留空以使用旧版的全部主机行为",
       "clientCount": "客户端",
       "totalGroups": "分组总数",
       "totalGroupedClients": "有分组的客户端",
