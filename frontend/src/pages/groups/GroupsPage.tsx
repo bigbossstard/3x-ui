@@ -12,6 +12,7 @@ import {
   Modal,
   Result,
   Row,
+  Select,
   Space,
   Spin,
   Statistic,
@@ -27,6 +28,7 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
+  GlobalOutlined,
   LinkOutlined,
   MoreOutlined,
   PieChartOutlined,
@@ -56,6 +58,7 @@ import {
   type GroupSummary,
 } from '@/schemas/client';
 import { parseMsg } from '@/utils/zodValidate';
+import { useHostsQuery } from '@/api/queries/useHostsQuery';
 
 const ClientRecordListSchema = z
   .array(ClientRecordSchema)
@@ -107,6 +110,7 @@ export default function GroupsPage() {
     queryFn: fetchGroups,
   });
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
+  const { hosts } = useHostsQuery();
   const loading = groupsQuery.isFetching;
   const fetched = groupsQuery.data !== undefined || groupsQuery.isError;
   const fetchError = groupsQuery.error ? (groupsQuery.error as Error).message : '';
@@ -160,6 +164,15 @@ export default function GroupsPage() {
   const [removeClientsOpen, setRemoveClientsOpen] = useState(false);
   const [groupEmails, setGroupEmails] = useState<string[]>([]);
   const [groupForAction, setGroupForAction] = useState<GroupSummary | null>(null);
+  const [hostAssignmentOpen, setHostAssignmentOpen] = useState(false);
+  const [hostAssignmentIds, setHostAssignmentIds] = useState<string[]>([]);
+  const hostAssignmentMut = useMutation({
+    mutationFn: ({ name, hostGroupIds }: { name: string; hostGroupIds: string[] }) =>
+      HttpUtil.post(`/panel/api/clients/groups/${encodeURIComponent(name)}/hosts`, { hostGroupIds }, JSON_HEADERS),
+    onSuccess: (msg) => {
+      if (msg?.success) setHostAssignmentOpen(false);
+    },
+  });
 
   const allClientsQuery = useQuery<ClientRecord[]>({
     queryKey: keys.clients.all(),
@@ -291,6 +304,25 @@ export default function GroupsPage() {
       messageApi.info(t('pages.groups.emptyForAction'));
       return;
     }
+
+    async function openHostAssignmentsFor(g: GroupSummary) {
+      const msg = await HttpUtil.get<string[]>(
+        `/panel/api/clients/groups/${encodeURIComponent(g.name)}/hosts`,
+        undefined,
+        { silent: true },
+      );
+      setGroupForAction(g);
+      setHostAssignmentIds(msg?.success && Array.isArray(msg.obj) ? msg.obj : []);
+      setHostAssignmentOpen(true);
+    }
+
+    async function saveHostAssignments() {
+      if (!groupForAction) return;
+      await hostAssignmentMut.mutateAsync({
+        name: groupForAction.name,
+        hostGroupIds: hostAssignmentIds,
+      });
+    }
     setGroupForAction(g);
     setRemoveClientsOpen(true);
   }
@@ -351,6 +383,12 @@ export default function GroupsPage() {
 
   function rowActions(row: GroupSummary): MenuProps['items'] {
     return [
+      {
+        key: 'hostAssignments',
+        icon: <GlobalOutlined />,
+        label: 'Assign host groups',
+        onClick: () => openHostAssignmentsFor(row),
+      },
       {
         key: 'subLinks',
         icon: <LinkOutlined />,
@@ -614,6 +652,30 @@ export default function GroupsPage() {
               />
             </Form.Item>
           </Form>
+        </Modal>
+
+        <Modal
+          open={hostAssignmentOpen}
+          title={groupForAction ? `Host groups for ${groupForAction.name}` : 'Host groups'}
+          okText={t('save')}
+          cancelText={t('cancel')}
+          confirmLoading={hostAssignmentMut.isPending}
+          onCancel={() => setHostAssignmentOpen(false)}
+          onOk={saveHostAssignments}
+          destroyOnHidden
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            style={{ width: '100%' }}
+            value={hostAssignmentIds}
+            onChange={setHostAssignmentIds}
+            options={hosts.map((host) => ({
+              value: host.groupId,
+              label: host.remark || host.groupId,
+            }))}
+            placeholder="Leave empty to use legacy all-host behavior"
+          />
         </Modal>
 
         <Modal

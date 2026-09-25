@@ -38,6 +38,14 @@ Existing clients are kept in legacy mode automatically because they have no `cli
 
 Clearing all Host assignments returns the client to legacy Host behavior.
 
+## Client-group assignments
+
+The prototype also supports assigning HostGroups to an existing 3x-ui client group
+(`clients.group_name`) through `client_group_hosts(group_name, host_group_id)`.
+When a client has no individual assignment, its group assignment is used. Group
+rename and delete operations update or remove these rows, and an empty group
+assignment keeps the legacy all-enabled-host behavior.
+
 ## Subscription integration
 
 Do not rewrite protocol-specific link generators. Keep the existing Host endpoint projection and

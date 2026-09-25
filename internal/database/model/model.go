@@ -972,6 +972,13 @@ type ClientGroup struct {
 
 func (ClientGroup) TableName() string { return "client_groups" }
 
+type ClientGroupHost struct {
+	GroupName string `json:"groupName" gorm:"primaryKey;column:group_name;index"`
+	HostGroupId string `json:"hostGroupId" gorm:"primaryKey;column:host_group_id;index"`
+}
+
+func (ClientGroupHost) TableName() string { return "client_group_hosts" }
+
 // MarshalJSON emits the reverse column as a nested JSON object rather than an
 // escaped JSON-text string, matching the same convention Inbound uses for its
 // JSON-text columns. Empty storage renders as null.

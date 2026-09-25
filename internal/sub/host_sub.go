@@ -32,17 +32,37 @@ func (s *SubService) getClientHostSelection(email string) clientHostSelection {
 	}
 	selection := clientHostSelection{assigned: true, groupIDs: map[string]struct{}{}}
 	var ids []string
-	if err := database.GetDB().Table("client_hosts ch").
+	query := database.GetDB().Table("client_hosts ch").
 		Select("ch.group_id").
 		Joins("JOIN clients c ON c.id = ch.client_id").
 		Where("LOWER(c.email) = ?", email).
 		Order("ch.group_id ASC").
-		Pluck("ch.group_id", &ids).Error; err != nil {
+		Pluck("ch.group_id", &ids)
+	if err := query.Error; err != nil {
 		// The relation table is part of the panel schema and is migrated before
 		// subscriptions are served. Fail closed on query errors so a restricted
 		// client can never leak every Host as a fallback.
 		logger.Warning("SubService - getClientHostSelection:", err)
+		return clientHostSelection{assigned: true, groupIDs: map[string]struct{}{}}
 	} else {
+		if len(ids) == 0 {
+			var groupName string
+			if err := database.GetDB().Table("clients").
+				Where("LOWER(email) = ?", email).
+				Pluck("group_name", &groupName).Error; err != nil {
+				logger.Warning("SubService - getClientHostSelection client group:", err)
+				return clientHostSelection{assigned: true, groupIDs: map[string]struct{}{}}
+			}
+			if strings.TrimSpace(groupName) != "" {
+				if err := database.GetDB().Table("client_group_hosts").
+					Where("group_name = ?", groupName).
+					Order("host_group_id ASC").
+					Pluck("host_group_id", &ids).Error; err != nil {
+					logger.Warning("SubService - getClientHostSelection group:", err)
+					return clientHostSelection{assigned: true, groupIDs: map[string]struct{}{}}
+				}
+			}
+		}
 		selection.assigned = len(ids) > 0
 		for _, id := range ids {
 			if id != "" {

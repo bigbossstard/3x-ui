@@ -151,3 +151,78 @@ func (s *ClientHostService) DeleteForGroup(groupID string) error {
 	}
 	return database.GetDB().Where("group_id = ?", groupID).Delete(&model.ClientHost{}).Error
 }
+
+func (s *ClientHostService) GetGroupAssignmentIDs(groupName string) ([]string, error) {
+	groupName = strings.TrimSpace(groupName)
+	if groupName == "" {
+		return []string{}, nil
+	}
+	var ids []string
+	err := database.GetDB().Model(&model.ClientGroupHost{}).
+		Where("group_name = ?", groupName).
+		Order("host_group_id ASC").
+		Pluck("host_group_id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *ClientHostService) SetGroupAssignmentIDs(groupName string, groupIDs []string) error {
+	groupName = strings.TrimSpace(groupName)
+	if groupName == "" {
+		return common.NewError("client group name is required")
+	}
+	groupIDs = normalizeHostGroupIDs(groupIDs)
+	return database.GetDB().Transaction(func(tx *gorm.DB) error {
+		var groupCount int64
+		if err := tx.Model(&model.ClientGroup{}).Where("name = ?", groupName).Count(&groupCount).Error; err != nil {
+			return err
+		}
+		if groupCount == 0 {
+			if err := tx.Model(&model.ClientRecord{}).Where("group_name = ?", groupName).Count(&groupCount).Error; err != nil {
+				return err
+			}
+		}
+		if groupCount == 0 {
+			return common.NewError("client group not found:", groupName)
+		}
+		if len(groupIDs) > 0 {
+			var existing []string
+			if err := tx.Model(&model.Host{}).
+				Where("group_id IN ?", groupIDs).
+				Distinct().
+				Pluck("group_id", &existing).Error; err != nil {
+				return err
+			}
+			existingSet := make(map[string]struct{}, len(existing))
+			for _, id := range existing {
+				existingSet[id] = struct{}{}
+			}
+			for _, id := range groupIDs {
+				if _, ok := existingSet[id]; !ok {
+					return common.NewError("host group not found:", id)
+				}
+			}
+		}
+		if err := tx.Where("group_name = ?", groupName).Delete(&model.ClientGroupHost{}).Error; err != nil {
+			return err
+		}
+		rows := make([]model.ClientGroupHost, 0, len(groupIDs))
+		for _, id := range groupIDs {
+			rows = append(rows, model.ClientGroupHost{GroupName: groupName, HostGroupId: id})
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
+func (s *ClientHostService) DeleteForClientGroup(groupName string) error {
+	groupName = strings.TrimSpace(groupName)
+	if groupName == "" {
+		return nil
+	}
+	return database.GetDB().Where("group_name = ?", groupName).Delete(&model.ClientGroupHost{}).Error
+}
