@@ -304,27 +304,27 @@ export default function GroupsPage() {
       messageApi.info(t('pages.groups.emptyForAction'));
       return;
     }
-
-    async function openHostAssignmentsFor(g: GroupSummary) {
-      const msg = await HttpUtil.get<string[]>(
-        `/panel/api/clients/groups/${encodeURIComponent(g.name)}/hosts`,
-        undefined,
-        { silent: true },
-      );
-      setGroupForAction(g);
-      setHostAssignmentIds(msg?.success && Array.isArray(msg.obj) ? msg.obj : []);
-      setHostAssignmentOpen(true);
-    }
-
-    async function saveHostAssignments() {
-      if (!groupForAction) return;
-      await hostAssignmentMut.mutateAsync({
-        name: groupForAction.name,
-        hostGroupIds: hostAssignmentIds,
-      });
-    }
     setGroupForAction(g);
     setRemoveClientsOpen(true);
+  }
+
+  async function openHostAssignmentsFor(g: GroupSummary) {
+    const msg = await HttpUtil.get<string[]>(
+      `/panel/api/clients/groups/${encodeURIComponent(g.name)}/hosts`,
+      undefined,
+      { silent: true },
+    );
+    setGroupForAction(g);
+    setHostAssignmentIds(msg?.success && Array.isArray(msg.obj) ? msg.obj : []);
+    setHostAssignmentOpen(true);
+  }
+
+  async function saveHostAssignments() {
+    if (!groupForAction) return;
+    await hostAssignmentMut.mutateAsync({
+      name: groupForAction.name,
+      hostGroupIds: hostAssignmentIds,
+    });
   }
 
   function onDeleteClients(g: GroupSummary) {
