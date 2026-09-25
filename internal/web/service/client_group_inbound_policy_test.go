@@ -7,6 +7,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
+// TestClientGroupInboundEmptyAssignmentIsRestricted distinguishes an explicit
+// empty restricted policy from an untouched legacy group.
 func TestClientGroupInboundEmptyAssignmentIsRestricted(t *testing.T) {
 	setupConflictDB(t)
 	db := database.GetDB()

@@ -8,6 +8,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
+// TestSub_ClientGroupInboundAssignmentFiltersInbounds verifies group policy
+// removes an attached inbound that is outside the group's allowed set.
 func TestSub_ClientGroupInboundAssignmentFiltersInbounds(t *testing.T) {
 	seedSubDB(t)
 	first := seedSubInbound(t, "s-group-inbound", "first", 4454, 1, wsTLSStream)
