@@ -955,6 +955,10 @@
 },
     "groups": {
       "name": "Tên",
+      "assignHostGroups": "G?n nh?m m?y ch?",
+      "hostGroupsFor": "Nh?m m?y ch? cho {name}",
+      "hostGroups": "Nh?m m?y ch?",
+      "hostsEmptyMeansLegacy": "?? tr?ng ?? d?ng h?nh vi c? v?i t?t c? m?y ch?",
       "clientCount": "Client",
       "totalGroups": "Tổng số nhóm",
       "totalGroupedClients": "Client có nhóm",

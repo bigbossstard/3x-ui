@@ -955,6 +955,10 @@
 },
     "groups": {
       "name": "İsim",
+      "assignHostGroups": "Ana bilgisayar gruplar?n? ata",
+      "hostGroupsFor": "{name} i?in ana bilgisayar gruplar?",
+      "hostGroups": "Ana bilgisayar gruplar?",
+      "hostsEmptyMeansLegacy": "T?m ana bilgisayarlar?n eski davran???n? kullanmak i?in bo? b?rak?n",
       "clientCount": "Kullanıcılar",
       "totalGroups": "Toplam grup",
       "totalGroupedClients": "Grubu olan kullanıcılar",

@@ -416,7 +416,7 @@ export default function GroupsPage() {
       {
         key: 'hostAssignments',
         icon: <GlobalOutlined />,
-        label: 'Assign host groups',
+        label: t('pages.groups.assignHostGroups'),
         onClick: () => openHostAssignmentsFor(row),
       },
       {
@@ -718,7 +718,11 @@ export default function GroupsPage() {
 
         <Modal
           open={hostAssignmentOpen}
-          title={groupForAction ? `Host groups for ${groupForAction.name}` : 'Host groups'}
+          title={
+            groupForAction
+              ? t('pages.groups.hostGroupsFor', { name: groupForAction.name })
+              : t('pages.groups.hostGroups')
+          }
           okText={t('save')}
           cancelText={t('cancel')}
           confirmLoading={hostAssignmentMut.isPending}
@@ -736,7 +740,7 @@ export default function GroupsPage() {
               value: host.groupId,
               label: host.remark || host.groupId,
             }))}
-            placeholder="Leave empty to use legacy all-host behavior"
+            placeholder={t('pages.groups.hostsEmptyMeansLegacy')}
           />
         </Modal>
 

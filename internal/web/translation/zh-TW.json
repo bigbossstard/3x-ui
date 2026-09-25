@@ -955,6 +955,10 @@
 },
     "groups": {
       "name": "名稱",
+      "assignHostGroups": "??????",
+      "hostGroupsFor": "{name} ?????",
+      "hostGroups": "????",
+      "hostsEmptyMeansLegacy": "??????????????",
       "clientCount": "客戶端",
       "totalGroups": "群組總數",
       "totalGroupedClients": "有群組的客戶端",

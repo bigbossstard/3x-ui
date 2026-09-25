@@ -955,6 +955,10 @@
 },
     "groups": {
       "name": "名称",
+      "assignHostGroups": "?????",
+      "hostGroupsFor": "{name} ????",
+      "hostGroups": "???",
+      "hostsEmptyMeansLegacy": "??????????????",
       "clientCount": "客户端",
       "totalGroups": "分组总数",
       "totalGroupedClients": "有分组的客户端",

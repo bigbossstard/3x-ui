@@ -955,6 +955,10 @@
 },
     "groups": {
       "name": "Nome",
+      "assignHostGroups": "Atribuir grupos de hosts",
+      "hostGroupsFor": "Grupos de hosts para {name}",
+      "hostGroups": "Grupos de hosts",
+      "hostsEmptyMeansLegacy": "Deixe vazio para usar o comportamento antigo com todos os hosts",
       "clientCount": "Clientes",
       "totalGroups": "Total de grupos",
       "totalGroupedClients": "Clientes com grupo",

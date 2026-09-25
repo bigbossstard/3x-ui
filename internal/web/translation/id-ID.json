@@ -955,6 +955,10 @@
 },
     "groups": {
       "name": "Nama",
+      "assignHostGroups": "Tetapkan grup host",
+      "hostGroupsFor": "Grup host untuk {name}",
+      "hostGroups": "Grup host",
+      "hostsEmptyMeansLegacy": "Biarkan kosong untuk menggunakan perilaku lama dengan semua host",
       "clientCount": "Klien",
       "totalGroups": "Total grup",
       "totalGroupedClients": "Klien dengan grup",
