@@ -262,23 +262,6 @@ func (s *ClientService) AddToGroup(emails []string, group string) (int, error) {
 		}
 		affected += result.RowsAffected
 	}
-	for _, record := range records {
-		if oldGroup := strings.TrimSpace(record.Group); oldGroup != "" {
-			if err := tx.Where("client_id = ? AND group_name = ?", record.Id, oldGroup).
-				Delete(&model.ClientGroupMembership{}).Error; err != nil {
-				tx.Rollback()
-				return 0, err
-			}
-		}
-		if group != "" {
-			if err := tx.FirstOrCreate(&model.ClientGroupMembership{
-				ClientId: record.Id, GroupName: group,
-			}).Error; err != nil {
-				tx.Rollback()
-				return 0, err
-			}
-		}
-	}
 
 	var inboundIDs []int
 	inboundIDSeen := make(map[int]struct{})
@@ -371,9 +354,6 @@ func (s *ClientService) replaceGroupValue(oldName, newName string) (int, error) 
 			if err := tx.Where("group_name = ?", oldName).Delete(&model.ClientGroupInbound{}).Error; err != nil {
 				return err
 			}
-			if err := tx.Where("group_name = ?", oldName).Delete(&model.ClientGroupMembership{}).Error; err != nil {
-				return err
-			}
 		} else {
 			if err := tx.Model(&model.ClientGroup{}).Where("name = ?", oldName).Update("name", newName).Error; err != nil {
 				return err
@@ -382,9 +362,6 @@ func (s *ClientService) replaceGroupValue(oldName, newName string) (int, error) 
 				return err
 			}
 			if err := tx.Model(&model.ClientGroupInbound{}).Where("group_name = ?", oldName).Update("group_name", newName).Error; err != nil {
-				return err
-			}
-			if err := tx.Model(&model.ClientGroupMembership{}).Where("group_name = ?", oldName).Update("group_name", newName).Error; err != nil {
 				return err
 			}
 		}

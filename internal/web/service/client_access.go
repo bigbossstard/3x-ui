@@ -30,35 +30,16 @@ func ResolveClientAccess(clientID int) (EffectiveClientAccess, error) {
 	}
 	db := database.GetDB()
 
-	var memberships []model.ClientGroupMembership
-	if err := db.Where("client_id = ?", clientID).
-		Order("group_name ASC").Find(&memberships).Error; err != nil {
+	var client model.ClientRecord
+	if err := db.First(&client, clientID).Error; err != nil {
 		return access, err
 	}
-	if len(memberships) == 0 {
-		var client model.ClientRecord
-		if err := db.First(&client, clientID).Error; err != nil {
-			return access, err
-		}
-		if strings.TrimSpace(client.Group) != "" {
-			memberships = []model.ClientGroupMembership{{ClientId: clientID, GroupName: strings.TrimSpace(client.Group)}}
-		}
-	}
+	group := strings.TrimSpace(client.Group)
 
-	groupSeen := make(map[string]struct{}, len(memberships))
 	inboundSet := map[int]struct{}{}
 	hostSet := map[string]struct{}{}
-	for _, membership := range memberships {
-		group := strings.TrimSpace(membership.GroupName)
-		if group == "" {
-			continue
-		}
-		if _, seen := groupSeen[group]; seen {
-			continue
-		}
-		groupSeen[group] = struct{}{}
-		access.GroupNames = append(access.GroupNames, group)
-
+	if group != "" {
+		access.GroupNames = []string{group}
 		var state string
 		if err := db.Table("client_groups").Where("name = ?", group).
 			Pluck("policy_state", &state).Error; err != nil {
@@ -74,20 +55,20 @@ func ResolveClientAccess(clientID int) (EffectiveClientAccess, error) {
 			for _, id := range inboundIDs {
 				inboundSet[id] = struct{}{}
 			}
-		}
-		var hostGroups []string
-		if err := db.Model(&model.ClientGroupHost{}).
-			Where("group_name = ?", group).Pluck("host_group_id", &hostGroups).Error; err != nil {
-			return access, err
-		}
-		for _, id := range hostGroups {
-			if id != "" {
-				hostSet[id] = struct{}{}
+			var hostGroups []string
+			if err := db.Model(&model.ClientGroupHost{}).
+				Where("group_name = ?", group).Pluck("host_group_id", &hostGroups).Error; err != nil {
+				return access, err
+			}
+			for _, id := range hostGroups {
+				if id != "" {
+					hostSet[id] = struct{}{}
+				}
 			}
 		}
 	}
 
-	if !access.HasRestrictedInbound {
+	if group == "" || !access.HasRestrictedInbound {
 		access.UsesLegacyInbounds = true
 	}
 	access.InboundIDs = sortedInts(inboundSet)

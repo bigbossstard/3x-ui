@@ -81,7 +81,6 @@ func allModels() []any {
 		&model.ClientGroup{},
 		&model.ClientGroupHost{},
 		&model.ClientGroupInbound{},
-		&model.ClientGroupMembership{},
 		&model.InboundFallback{},
 		&model.Host{},
 		&model.NodeClientTraffic{},
@@ -148,12 +147,6 @@ func initModels() error {
 		return err
 	}
 	if err := pruneOrphanedClientGroupInbounds(); err != nil {
-		return err
-	}
-	if err := migrateClientGroupMemberships(); err != nil {
-		return err
-	}
-	if err := pruneOrphanedClientGroupMemberships(); err != nil {
 		return err
 	}
 	if err := pruneOrphanedHosts(); err != nil {
@@ -925,28 +918,6 @@ func pruneOrphanedClientGroupInbounds() error {
 	return nil
 }
 
-// migrateClientGroupMemberships is additive and idempotent. Existing clients
-// have one legacy group label, which becomes one membership row.
-func migrateClientGroupMemberships() error {
-	return db.Exec(`INSERT INTO client_group_memberships (client_id, group_name)
-		SELECT id, group_name
-		FROM clients
-		WHERE COALESCE(group_name, '') <> ''
-		AND NOT EXISTS (
-			SELECT 1 FROM client_group_memberships m
-			WHERE m.client_id = clients.id AND m.group_name = clients.group_name
-		)`).Error
-}
-
-func pruneOrphanedClientGroupMemberships() error {
-	return db.Exec(`DELETE FROM client_group_memberships
-		WHERE client_id NOT IN (SELECT id FROM clients)
-		   OR group_name NOT IN (
-				SELECT name FROM client_groups
-				UNION
-				SELECT DISTINCT group_name FROM clients WHERE COALESCE(group_name, '') <> ''
-		   )`).Error
-}
 
 // migrateLegacySocksInboundsToMixed renames legacy socks inbounds to mixed.
 // The protocol enum dropped socks in favor of mixed (identical settings shape,
