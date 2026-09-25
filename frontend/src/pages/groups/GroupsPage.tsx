@@ -479,6 +479,20 @@ export default function GroupsPage() {
     ];
   }
 
+  function assignedHostLabels(groupName: string) {
+    const assignedIds = groupHostAssignments[groupName] ?? [];
+    const labels = new Map<string, string>();
+    for (const host of hosts) {
+      if (assignedIds.includes(host.groupId) && !labels.has(host.groupId)) {
+        labels.set(host.groupId, host.remark || host.hosts?.[0] || host.groupId);
+      }
+    }
+    return assignedIds.map((groupId) => ({
+      groupId,
+      label: labels.get(groupId) ?? groupId,
+    }));
+  }
+
   const columns: TableColumnsType<GroupSummary> = [
     {
       title: t('pages.clients.actions'),
@@ -512,24 +526,27 @@ export default function GroupsPage() {
       title: t('pages.groups.name'),
       dataIndex: 'name',
       key: 'name',
-      render: (name: string) => {
-        const assignedIds = groupHostAssignments[name] ?? [];
-        const assignedHosts = hosts.filter((host) => assignedIds.includes(host.groupId));
-        const labels = assignedIds.map((groupId) => {
-          const host = assignedHosts.find((candidate) => candidate.groupId === groupId);
-          return host?.remark || host?.hosts?.[0] || groupId;
-        });
-        return (
+      render: (name: string) => (
+        <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>
+          {name}
+        </Tag>
+      ),
+    },
+    {
+      title: t('pages.clients.attachedHosts'),
+      key: 'attachedHosts',
+      render: (_value, row) => {
+        const labels = assignedHostLabels(row.name);
+        return labels.length > 0 ? (
           <Space size={[4, 4]} wrap>
-            <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>
-              {name}
-            </Tag>
-            {labels.map((label, index) => (
-              <Tag key={`${assignedIds[index]}-${label}`} color="cyan" style={{ margin: 0 }}>
+            {labels.map(({ groupId, label }) => (
+              <Tag key={groupId} color="cyan" style={{ margin: 0 }}>
                 {label}
               </Tag>
             ))}
           </Space>
+        ) : (
+          <span style={{ color: 'var(--ant-color-text-tertiary)' }}>—</span>
         );
       },
     },
