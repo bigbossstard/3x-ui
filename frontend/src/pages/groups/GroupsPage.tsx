@@ -166,6 +166,7 @@ export default function GroupsPage() {
   const [groupForAction, setGroupForAction] = useState<GroupSummary | null>(null);
   const [hostAssignmentOpen, setHostAssignmentOpen] = useState(false);
   const [hostAssignmentIds, setHostAssignmentIds] = useState<string[]>([]);
+  const [groupHostAssignments, setGroupHostAssignments] = useState<Record<string, string[]>>({});
   const hostAssignmentMut = useMutation({
     mutationFn: ({ name, hostGroupIds }: { name: string; hostGroupIds: string[] }) =>
       HttpUtil.post(`/panel/api/clients/groups/${encodeURIComponent(name)}/hosts`, { hostGroupIds }, JSON_HEADERS),
@@ -173,6 +174,29 @@ export default function GroupsPage() {
       if (msg?.success) setHostAssignmentOpen(false);
     },
   });
+
+  useEffect(() => {
+    if (groups.length === 0) {
+      setGroupHostAssignments({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      groups.map(async (group) => {
+        const msg = await HttpUtil.get<string[]>(
+          `/panel/api/clients/groups/${encodeURIComponent(group.name)}/hosts`,
+          undefined,
+          { silent: true },
+        );
+        return [group.name, msg?.success && Array.isArray(msg.obj) ? msg.obj : []] as const;
+      }),
+    ).then((entries) => {
+      if (!cancelled) setGroupHostAssignments(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [groups]);
 
   const allClientsQuery = useQuery<ClientRecord[]>({
     queryKey: keys.clients.all(),
@@ -315,7 +339,9 @@ export default function GroupsPage() {
       { silent: true },
     );
     setGroupForAction(g);
-    setHostAssignmentIds(msg?.success && Array.isArray(msg.obj) ? msg.obj : []);
+    const ids = msg?.success && Array.isArray(msg.obj) ? msg.obj : [];
+    setHostAssignmentIds(ids);
+    setGroupHostAssignments((current) => ({ ...current, [g.name]: ids }));
     setHostAssignmentOpen(true);
   }
 
@@ -325,6 +351,10 @@ export default function GroupsPage() {
       name: groupForAction.name,
       hostGroupIds: hostAssignmentIds,
     });
+    setGroupHostAssignments((current) => ({
+      ...current,
+      [groupForAction.name]: hostAssignmentIds,
+    }));
   }
 
   function onDeleteClients(g: GroupSummary) {
@@ -482,11 +512,26 @@ export default function GroupsPage() {
       title: t('pages.groups.name'),
       dataIndex: 'name',
       key: 'name',
-      render: (name: string) => (
-        <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>
-          {name}
-        </Tag>
-      ),
+      render: (name: string) => {
+        const assignedIds = groupHostAssignments[name] ?? [];
+        const assignedHosts = hosts.filter((host) => assignedIds.includes(host.groupId));
+        const labels = assignedIds.map((groupId) => {
+          const host = assignedHosts.find((candidate) => candidate.groupId === groupId);
+          return host?.remark || host?.hosts?.[0] || groupId;
+        });
+        return (
+          <Space size={[4, 4]} wrap>
+            <Tag color="geekblue" style={{ margin: 0, fontSize: 13 }}>
+              {name}
+            </Tag>
+            {labels.map((label, index) => (
+              <Tag key={`${assignedIds[index]}-${label}`} color="cyan" style={{ margin: 0 }}>
+                {label}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
     },
     {
       title: t('pages.groups.clientCount'),
