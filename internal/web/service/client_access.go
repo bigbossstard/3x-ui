@@ -55,15 +55,15 @@ func ResolveClientAccess(clientID int) (EffectiveClientAccess, error) {
 			for _, id := range inboundIDs {
 				inboundSet[id] = struct{}{}
 			}
-			var hostGroups []string
-			if err := db.Model(&model.ClientGroupHost{}).
-				Where("group_name = ?", group).Pluck("host_group_id", &hostGroups).Error; err != nil {
-				return access, err
-			}
-			for _, id := range hostGroups {
-				if id != "" {
-					hostSet[id] = struct{}{}
-				}
+		}
+		var hostGroups []string
+		if err := db.Model(&model.ClientGroupHost{}).
+			Where("group_name = ?", group).Pluck("host_group_id", &hostGroups).Error; err != nil {
+			return access, err
+		}
+		for _, id := range hostGroups {
+			if id != "" {
+				hostSet[id] = struct{}{}
 			}
 		}
 	}
