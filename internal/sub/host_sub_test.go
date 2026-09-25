@@ -601,7 +601,7 @@ func TestSub_ClientGroupInboundAssignmentFiltersInbounds(t *testing.T) {
 	if err := database.GetDB().Model(&model.ClientRecord{}).Where("id = ?", client.Id).Update("group_name", "premium").Error; err != nil {
 		t.Fatalf("set group: %v", err)
 	}
-	if err := database.GetDB().Create(&model.ClientGroup{Name: "premium"}).Error; err != nil {
+	if err := database.GetDB().Create(&model.ClientGroup{Name: "premium", PolicyState: model.ClientGroupPolicyRestricted}).Error; err != nil {
 		t.Fatalf("create group: %v", err)
 	}
 	if err := database.GetDB().Create(&model.ClientGroupInbound{GroupName: "premium", InboundId: first.Id}).Error; err != nil {
