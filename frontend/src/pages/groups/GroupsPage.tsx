@@ -59,6 +59,7 @@ import {
 } from '@/schemas/client';
 import { parseMsg } from '@/utils/zodValidate';
 import { useHostsQuery } from '@/api/queries/useHostsQuery';
+import { useInbounds } from '@/pages/inbounds/useInbounds';
 
 const ClientRecordListSchema = z
   .array(ClientRecordSchema)
@@ -111,6 +112,7 @@ export default function GroupsPage() {
   });
   const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
   const { hosts } = useHostsQuery();
+  const { dbInbounds } = useInbounds();
   const loading = groupsQuery.isFetching;
   const fetched = groupsQuery.data !== undefined || groupsQuery.isError;
   const fetchError = groupsQuery.error ? (groupsQuery.error as Error).message : '';
@@ -167,6 +169,8 @@ export default function GroupsPage() {
   const [hostAssignmentOpen, setHostAssignmentOpen] = useState(false);
   const [hostAssignmentIds, setHostAssignmentIds] = useState<string[]>([]);
   const [groupHostAssignments, setGroupHostAssignments] = useState<Record<string, string[]>>({});
+  const [inboundPolicyOpen, setInboundPolicyOpen] = useState(false);
+  const [inboundPolicyIds, setInboundPolicyIds] = useState<number[]>([]);
   const hostAssignmentMut = useMutation({
     mutationFn: ({ name, hostGroupIds }: { name: string; hostGroupIds: string[] }) =>
       HttpUtil.post(
@@ -176,6 +180,17 @@ export default function GroupsPage() {
       ),
     onSuccess: (msg) => {
       if (msg?.success) setHostAssignmentOpen(false);
+    },
+  });
+  const inboundPolicyMut = useMutation({
+    mutationFn: ({ name, inboundIds }: { name: string; inboundIds: number[] }) =>
+      HttpUtil.post(
+        `/panel/api/clients/groups/${encodeURIComponent(name)}/inbounds`,
+        { inboundIds },
+        JSON_HEADERS,
+      ),
+    onSuccess: (msg) => {
+      if (msg?.success) setInboundPolicyOpen(false);
     },
   });
 
@@ -357,6 +372,27 @@ export default function GroupsPage() {
     }));
   }
 
+  async function openInboundPolicyFor(g: GroupSummary) {
+    const msg = await HttpUtil.get<{ inboundIds?: number[] }>(
+      `/panel/api/clients/groups/${encodeURIComponent(g.name)}/inboundPolicy`,
+      undefined,
+      { silent: true },
+    );
+    setGroupForAction(g);
+    setInboundPolicyIds(
+      msg?.success && Array.isArray(msg.obj?.inboundIds) ? msg.obj.inboundIds : [],
+    );
+    setInboundPolicyOpen(true);
+  }
+
+  async function saveInboundPolicy() {
+    if (!groupForAction) return;
+    await inboundPolicyMut.mutateAsync({
+      name: groupForAction.name,
+      inboundIds: inboundPolicyIds,
+    });
+  }
+
   function onDeleteClients(g: GroupSummary) {
     if (!g.clientCount) {
       messageApi.info(t('pages.groups.emptyForAction'));
@@ -418,6 +454,12 @@ export default function GroupsPage() {
         icon: <GlobalOutlined />,
         label: t('pages.groups.assignHostGroups'),
         onClick: () => openHostAssignmentsFor(row),
+      },
+      {
+        key: 'inboundPolicy',
+        icon: <GlobalOutlined />,
+        label: t('pages.clients.selectInbound'),
+        onClick: () => openInboundPolicyFor(row),
       },
       {
         key: 'subLinks',
@@ -741,6 +783,30 @@ export default function GroupsPage() {
               label: host.remark || host.groupId,
             }))}
             placeholder={t('pages.groups.hostsEmptyMeansLegacy')}
+          />
+        </Modal>
+
+        <Modal
+          open={inboundPolicyOpen}
+          title={groupForAction ? `${t('pages.inbounds.selectInbound')}: ${groupForAction.name}` : ''}
+          okText={t('save')}
+          cancelText={t('cancel')}
+          confirmLoading={inboundPolicyMut.isPending}
+          onCancel={() => setInboundPolicyOpen(false)}
+          onOk={saveInboundPolicy}
+          destroyOnHidden
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            style={{ width: '100%' }}
+            value={inboundPolicyIds}
+            onChange={setInboundPolicyIds}
+            options={dbInbounds.map((inbound) => ({
+              value: inbound.id,
+              label: inbound.remark || inbound.tag || `#${inbound.id}`,
+            }))}
+            placeholder={t('pages.inbounds.selectInbound')}
           />
         </Modal>
 
