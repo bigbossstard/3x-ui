@@ -27,18 +27,15 @@ func TestResolveClientAccessUsesGroupPolicies(t *testing.T) {
 	if err := db.Create(&model.ClientGroupHost{GroupName: "premium", HostGroupId: "group-host"}).Error; err != nil {
 		t.Fatalf("create host policy: %v", err)
 	}
-
 	got, err := ResolveClientAccess(client.Id)
 	if err != nil {
 		t.Fatalf("ResolveClientAccess: %v", err)
 	}
 	if !reflect.DeepEqual(got.GroupNames, []string{"premium"}) ||
 		!reflect.DeepEqual(got.InboundIDs, []int{1}) ||
-		!reflect.DeepEqual(got.HostGroupIDs, []string{"group-host"}) {
+		!reflect.DeepEqual(got.HostGroupIDs, []string{"group-host"}) ||
+		got.UsesLegacyInbounds {
 		t.Fatalf("access = %+v", got)
-	}
-	if got.UsesLegacyInbounds {
-		t.Fatal("restricted policy unexpectedly uses legacy inbounds")
 	}
 }
 
@@ -47,29 +44,6 @@ func TestResolveClientAccessIndividualHostsOverrideGroupPolicy(t *testing.T) {
 	db := database.GetDB()
 	if err := db.Create(&model.ClientGroup{Name: "premium", PolicyState: model.ClientGroupPolicyRestricted}).Error; err != nil {
 		t.Fatalf("create group: %v", err)
-	}
-
-	func TestResolveClientAccessKeepsGroupHostsForLegacyInboundPolicy(t *testing.T) {
-		setupConflictDB(t)
-		db := database.GetDB()
-		if err := db.Create(&model.ClientGroup{Name: "legacy", PolicyState: model.ClientGroupPolicyLegacy}).Error; err != nil {
-			t.Fatalf("create group: %v", err)
-		}
-		client := &model.ClientRecord{Email: "legacy-host@example", Group: "legacy", Enable: true}
-		if err := db.Create(client).Error; err != nil {
-			t.Fatalf("create client: %v", err)
-		}
-		if err := db.Create(&model.ClientGroupHost{GroupName: "legacy", HostGroupId: "legacy-host"}).Error; err != nil {
-			t.Fatalf("create group host: %v", err)
-		}
-
-		got, err := ResolveClientAccess(client.Id)
-		if err != nil {
-			t.Fatalf("ResolveClientAccess: %v", err)
-		}
-		if !got.UsesLegacyInbounds || !reflect.DeepEqual(got.HostGroupIDs, []string{"legacy-host"}) {
-			t.Fatalf("access = %+v", got)
-		}
 	}
 	client := &model.ClientRecord{Email: "override@example", Group: "premium", Enable: true}
 	if err := db.Create(client).Error; err != nil {
@@ -81,12 +55,33 @@ func TestResolveClientAccessIndividualHostsOverrideGroupPolicy(t *testing.T) {
 	if err := db.Create(&model.ClientHost{ClientId: client.Id, GroupId: "individual-host"}).Error; err != nil {
 		t.Fatalf("create individual host: %v", err)
 	}
-
 	got, err := ResolveClientAccess(client.Id)
 	if err != nil {
 		t.Fatalf("ResolveClientAccess: %v", err)
 	}
 	if !got.IndividualHostGroups || !reflect.DeepEqual(got.HostGroupIDs, []string{"individual-host"}) {
+		t.Fatalf("access = %+v", got)
+	}
+}
+
+func TestResolveClientAccessKeepsGroupHostsForLegacyInboundPolicy(t *testing.T) {
+	setupConflictDB(t)
+	db := database.GetDB()
+	if err := db.Create(&model.ClientGroup{Name: "legacy", PolicyState: model.ClientGroupPolicyLegacy}).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	client := &model.ClientRecord{Email: "legacy-host@example", Group: "legacy", Enable: true}
+	if err := db.Create(client).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	if err := db.Create(&model.ClientGroupHost{GroupName: "legacy", HostGroupId: "legacy-host"}).Error; err != nil {
+		t.Fatalf("create group host: %v", err)
+	}
+	got, err := ResolveClientAccess(client.Id)
+	if err != nil {
+		t.Fatalf("ResolveClientAccess: %v", err)
+	}
+	if !got.UsesLegacyInbounds || !reflect.DeepEqual(got.HostGroupIDs, []string{"legacy-host"}) {
 		t.Fatalf("access = %+v", got)
 	}
 }
