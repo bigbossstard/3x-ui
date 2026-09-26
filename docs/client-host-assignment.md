@@ -46,6 +46,24 @@ When a client has no individual assignment, its group assignment is used. Group
 rename and delete operations update or remove these rows, and an empty group
 assignment keeps the legacy all-enabled-host behavior.
 
+The access-model experiment adds a group → inbound policy (`client_group_inbounds`) and an
+explicit `client_groups.policy_state`:
+
+- `legacy` leaves inbound selection unchanged;
+- `restricted` exposes only listed inbounds to subscription generation; an empty list exposes
+  none;
+- group HostGroup assignments are read independently and combined with that group's inbound
+  policy;
+- an individual `client_hosts` assignment remains a compatibility override for Host selection.
+
+This policy currently filters generated subscriptions only. It does **not** detach clients from
+`client_inbounds`, remove client credentials from Xray, or push a client delta to a remote node.
+The Xray config and node reconciler still treat inbound settings and `client_inbounds` as runtime
+state. Therefore an inbound policy must not be described as runtime access revocation until a
+separate projection/reconciliation change computes the effective attachment delta and applies it
+through `runtime.Runtime` (including offline-node dirty reconciliation). A restart alone does not
+enforce the policy.
+
 ## Subscription integration
 
 Do not rewrite protocol-specific link generators. Keep the existing Host endpoint projection and
