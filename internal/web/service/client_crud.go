@@ -150,6 +150,9 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 	if len(payload.InboundIds) == 0 {
 		return false, common.NewError("at least one inbound is required")
 	}
+	if err := (&ClientGroupInboundService{}).ValidateInboundAttachments(client.Group, payload.InboundIds); err != nil {
+		return false, err
+	}
 
 	if client.SubID == "" {
 		client.SubID = uuid.NewString()
@@ -581,6 +584,23 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 		}
 		inboundIds = filtered
 	}
+	groupAllowedIDs, groupRestricted, err := (&ClientGroupInboundService{}).RestrictedInboundIDs(updated.Group)
+	if err != nil {
+		return false, err
+	}
+	if groupRestricted {
+		allowed := make(map[int]struct{}, len(groupAllowedIDs))
+		for _, inboundID := range groupAllowedIDs {
+			allowed[inboundID] = struct{}{}
+		}
+		filtered := inboundIds[:0:0]
+		for _, inboundID := range inboundIds {
+			if _, ok := allowed[inboundID]; ok {
+				filtered = append(filtered, inboundID)
+			}
+		}
+		inboundIds = filtered
+	}
 
 	if strings.TrimSpace(updated.Email) == "" {
 		return false, common.NewError("client email is required")
@@ -787,6 +807,11 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 		UpdateColumn("group_name", updated.Group).Error; err != nil {
 		return needRestart, err
 	}
+	policyRestart, policyErr := s.EnforceClientGroupInboundPolicy(inboundSvc, id, updated.Group)
+	needRestart = needRestart || policyRestart
+	if policyErr != nil {
+		return needRestart, policyErr
+	}
 
 	// Same shape as the group write above: SyncInbound keeps a stored ad-tag
 	// when the incoming settings carry none, so clearing the override must be
@@ -987,6 +1012,9 @@ func addressesFitAmneziaWGInbound(addrs []string, ib *model.Inbound) bool {
 func (s *ClientService) Attach(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
 	existing, err := s.GetByID(id)
 	if err != nil {
+		return false, err
+	}
+	if err := (&ClientGroupInboundService{}).ValidateInboundAttachments(existing.Group, inboundIds); err != nil {
 		return false, err
 	}
 	currentIds, err := s.GetInboundIdsForRecord(id)

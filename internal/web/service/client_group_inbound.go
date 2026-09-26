@@ -88,6 +88,37 @@ func (s *ClientGroupInboundService) GetPolicy(groupName string) (ClientGroupInbo
 	return policy, nil
 }
 
+func (s *ClientGroupInboundService) RestrictedInboundIDs(groupName string) ([]int, bool, error) {
+	policy, err := s.GetPolicy(groupName)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return []int{}, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return policy.InboundIDs, policy.PolicyState == model.ClientGroupPolicyRestricted, nil
+}
+
+func (s *ClientGroupInboundService) ValidateInboundAttachments(groupName string, inboundIDs []int) error {
+	allowedIDs, restricted, err := s.RestrictedInboundIDs(groupName)
+	if err != nil {
+		return err
+	}
+	if !restricted {
+		return nil
+	}
+	allowed := make(map[int]struct{}, len(allowedIDs))
+	for _, id := range allowedIDs {
+		allowed[id] = struct{}{}
+	}
+	for _, id := range inboundIDs {
+		if _, ok := allowed[id]; !ok {
+			return common.NewError("inbound is outside the client's group policy:", id)
+		}
+	}
+	return nil
+}
+
 func (s *ClientGroupInboundService) SetInboundIDs(groupName string, inboundIDs []int) (bool, error) {
 	groupName = strings.TrimSpace(groupName)
 	if groupName == "" {
@@ -151,7 +182,7 @@ func (s *ClientGroupInboundService) SetInboundIDs(groupName string, inboundIDs [
 	}); err != nil {
 		return false, err
 	}
-	return (&ClientService{}).EnforceGroupInboundPolicy(&InboundService{}, groupName, inboundIDs)
+	return (&ClientService{}).EnforceRestrictedGroupInboundPolicy(&InboundService{}, groupName)
 }
 
 func (s *ClientGroupInboundService) DeleteForClientGroup(groupName string) error {

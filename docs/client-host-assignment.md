@@ -61,13 +61,27 @@ allowlist through the established client deletion path. Local removals use the i
 API/sidecar apply path; remote-node removals use the remote runtime API and mark offline nodes dirty
 in the same database transaction so reconnect reconciliation reapplies the deletion. A local Xray
 restart is requested only when the existing deletion path reports it is required.
+
+Attachment writes are guarded at the normal entry points: single/bulk create, attach, client
+update, group bulk-add, and normalized inbound sync reject disallowed attachments or filter an
+update's outbound changes before runtime dispatch. Client updates into a restricted group then
+revoke any remaining disallowed attachments. An inbound/node snapshot that conflicts with policy
+is rejected rather than adopted; operators may need to repair the source node/policy and retry sync.
 If a local detach fails after the policy transaction commits, the endpoint reports the failure;
 retrying the same policy is idempotent and retries remaining detachments.
+Direct database edits and restoring a database snapshot bypass these mutation guards; a subsequent
+group-policy save reconciles existing links, but startup does not currently run a full policy sweep.
 
 This is intentionally deny-only: newly allowed inbounds are not automatically populated with
 clients. Provisioning may require protocol-specific credentials (notably WireGuard/AmneziaWG,
 MTProto and TUIC), so clients still need to be attached through the normal supported client flow.
 Individual `client_hosts` continue to override group Host selection for compatibility.
+
+Removing a client from its restricted group currently returns it to the legacy ungrouped policy;
+the existing denied inbound links have been detached, but legacy Host selection may widen on
+remaining inbounds. This transition needs an explicit future decision (retain a client-level
+restricted snapshot, or define ungrouped clients as legacy) before treating group removal as a
+security revocation.
 
 ## Subscription integration
 

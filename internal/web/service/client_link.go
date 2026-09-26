@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -124,6 +125,9 @@ func (s *ClientService) syncInboundClients(tx *gorm.DB, inboundId int, clients [
 			r := rows[i]
 			existing[r.Email] = &r
 		}
+	}
+	if err := validateInboundClientGroupPolicy(tx, inboundId, clients, existing); err != nil {
+		return err
 	}
 
 	idByEmail := make(map[string]int, len(emails))
@@ -299,6 +303,77 @@ func (s *ClientService) reconcileInboundLinks(tx *gorm.DB, inboundId int, wanted
 			DoUpdates: clause.AssignmentColumns([]string{"flow_override"}),
 		}).CreateInBatches(toInsert, 200).Error; err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateInboundClientGroupPolicy(tx *gorm.DB, inboundID int, clients []model.Client, existing map[string]*model.ClientRecord) error {
+	if tx == nil || len(clients) == 0 {
+		return nil
+	}
+	groupsByEmail := make(map[string]string, len(clients))
+	existingGroupByEmail := make(map[string]string, len(existing))
+	for email, record := range existing {
+		existingGroupByEmail[strings.ToLower(email)] = strings.TrimSpace(record.Group)
+	}
+	groupSet := make(map[string]struct{})
+	for i := range clients {
+		email := strings.ToLower(strings.TrimSpace(clients[i].Email))
+		group := strings.TrimSpace(clients[i].Group)
+		if group == "" {
+			group = existingGroupByEmail[email]
+		}
+		if email == "" || group == "" {
+			continue
+		}
+		groupsByEmail[email] = group
+		groupSet[group] = struct{}{}
+	}
+	if len(groupSet) == 0 {
+		return nil
+	}
+	groupNames := make([]string, 0, len(groupSet))
+	for group := range groupSet {
+		groupNames = append(groupNames, group)
+	}
+	var restrictedGroups []string
+	for _, batch := range chunkStrings(groupNames, sqlInChunk) {
+		var rows []string
+		if err := tx.Model(&model.ClientGroup{}).
+			Where("name IN ? AND policy_state = ?", batch, model.ClientGroupPolicyRestricted).
+			Pluck("name", &rows).Error; err != nil {
+			return err
+		}
+		restrictedGroups = append(restrictedGroups, rows...)
+	}
+	if len(restrictedGroups) == 0 {
+		return nil
+	}
+	restrictedSet := make(map[string]struct{}, len(restrictedGroups))
+	for _, group := range restrictedGroups {
+		restrictedSet[group] = struct{}{}
+	}
+	var allowedGroups []string
+	for _, batch := range chunkStrings(restrictedGroups, sqlInChunk) {
+		var rows []string
+		if err := tx.Model(&model.ClientGroupInbound{}).
+			Where("group_name IN ? AND inbound_id = ?", batch, inboundID).
+			Pluck("group_name", &rows).Error; err != nil {
+			return err
+		}
+		allowedGroups = append(allowedGroups, rows...)
+	}
+	allowedSet := make(map[string]struct{}, len(allowedGroups))
+	for _, group := range allowedGroups {
+		allowedSet[group] = struct{}{}
+	}
+	for email, group := range groupsByEmail {
+		if _, restricted := restrictedSet[group]; !restricted {
+			continue
+		}
+		if _, allowed := allowedSet[group]; !allowed {
+			return fmt.Errorf("client %q cannot be attached to inbound %d outside group %q policy", email, inboundID, group)
 		}
 	}
 	return nil

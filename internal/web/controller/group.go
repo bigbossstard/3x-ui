@@ -215,8 +215,16 @@ func (a *GroupController) bulkAdd(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	jsonObj(c, gin.H{"affected": affected}, nil)
+	needRestart, enforceErr := (&service.ClientService{}).EnforceRestrictedGroupInboundPolicy(&service.InboundService{}, req.Group)
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
 	notifyClientsChanged()
+	if enforceErr != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), enforceErr)
+		return
+	}
+	jsonObj(c, gin.H{"affected": affected}, nil)
 }
 
 type bulkRemoveFromGroupRequest struct {

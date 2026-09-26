@@ -17,6 +17,7 @@ func (s *ClientService) EnforceGroupInboundPolicy(inboundSvc *InboundService, gr
 	if groupName == "" {
 		return false, nil
 	}
+
 	allowed := make(map[int]struct{}, len(allowedInboundIDs))
 	for _, id := range allowedInboundIDs {
 		allowed[id] = struct{}{}
@@ -30,20 +31,54 @@ func (s *ClientService) EnforceGroupInboundPolicy(inboundSvc *InboundService, gr
 	var needRestart bool
 	var failures []error
 	for _, client := range clients {
-		inboundIDs, err := clientSvc.GetInboundIdsForRecord(client.Id)
+		restart, err := clientSvc.enforceClientInboundAllowlist(inboundSvc, &client, allowed)
+		needRestart = needRestart || restart
 		if err != nil {
-			failures = append(failures, fmt.Errorf("load attachments for client %q: %w", client.Email, err))
+			failures = append(failures, err)
+		}
+	}
+	return needRestart, errors.Join(failures...)
+}
+
+func (s *ClientService) EnforceRestrictedGroupInboundPolicy(inboundSvc *InboundService, groupName string) (bool, error) {
+	allowedInboundIDs, restricted, err := (&ClientGroupInboundService{}).RestrictedInboundIDs(groupName)
+	if err != nil || !restricted {
+		return false, err
+	}
+	return s.EnforceGroupInboundPolicy(inboundSvc, groupName, allowedInboundIDs)
+}
+
+func (s *ClientService) EnforceClientGroupInboundPolicy(inboundSvc *InboundService, clientID int, groupName string) (bool, error) {
+	allowedInboundIDs, restricted, err := (&ClientGroupInboundService{}).RestrictedInboundIDs(groupName)
+	if err != nil || !restricted {
+		return false, err
+	}
+	client, err := s.GetByID(clientID)
+	if err != nil {
+		return false, err
+	}
+	allowed := make(map[int]struct{}, len(allowedInboundIDs))
+	for _, id := range allowedInboundIDs {
+		allowed[id] = struct{}{}
+	}
+	return s.enforceClientInboundAllowlist(inboundSvc, client, allowed)
+}
+
+func (s *ClientService) enforceClientInboundAllowlist(inboundSvc *InboundService, client *model.ClientRecord, allowed map[int]struct{}) (bool, error) {
+	inboundIDs, err := s.GetInboundIdsForRecord(client.Id)
+	if err != nil {
+		return false, fmt.Errorf("load attachments for client %q: %w", client.Email, err)
+	}
+	var needRestart bool
+	var failures []error
+	for _, inboundID := range inboundIDs {
+		if _, keep := allowed[inboundID]; keep {
 			continue
 		}
-		for _, inboundID := range inboundIDs {
-			if _, keep := allowed[inboundID]; keep {
-				continue
-			}
-			restart, err := clientSvc.DelInboundClientByEmail(inboundSvc, inboundID, client.Email, true, false)
-			needRestart = needRestart || restart
-			if err != nil && !errors.Is(err, ErrClientNotInInbound) {
-				failures = append(failures, fmt.Errorf("detach client %q from inbound %d: %w", client.Email, inboundID, err))
-			}
+		restart, err := s.DelInboundClientByEmail(inboundSvc, inboundID, client.Email, true, false)
+		needRestart = needRestart || restart
+		if err != nil && !errors.Is(err, ErrClientNotInInbound) {
+			failures = append(failures, fmt.Errorf("detach client %q from inbound %d: %w", client.Email, inboundID, err))
 		}
 	}
 	return needRestart, errors.Join(failures...)

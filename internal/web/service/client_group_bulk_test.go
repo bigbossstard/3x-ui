@@ -40,3 +40,40 @@ func TestAddToGroupReportsOnlyChangedRecordsIncludingNull(t *testing.T) {
 		t.Fatalf("second affected = %d, want 0", got)
 	}
 }
+
+func TestAddToRestrictedGroupRejectsDisallowedExistingAttachments(t *testing.T) {
+	setupConflictDB(t)
+	db := database.GetDB()
+	client := &model.ClientRecord{Email: "legacy@x", UUID: "legacy-uuid", Group: "legacy"}
+	if err := db.Create(client).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	allowed := &model.Inbound{Tag: "group-move-allowed", Port: 44531, Protocol: model.VLESS}
+	blocked := &model.Inbound{Tag: "group-move-blocked", Port: 44532, Protocol: model.VLESS}
+	if err := db.Create(allowed).Error; err != nil {
+		t.Fatalf("create allowed inbound: %v", err)
+	}
+	if err := db.Create(blocked).Error; err != nil {
+		t.Fatalf("create blocked inbound: %v", err)
+	}
+	if err := db.Create(&model.ClientInbound{ClientId: client.Id, InboundId: blocked.Id}).Error; err != nil {
+		t.Fatalf("attach blocked inbound: %v", err)
+	}
+	if err := db.Create(&model.ClientGroup{Name: "premium", PolicyState: model.ClientGroupPolicyRestricted}).Error; err != nil {
+		t.Fatalf("create restricted group: %v", err)
+	}
+	if err := db.Create(&model.ClientGroupInbound{GroupName: "premium", InboundId: allowed.Id}).Error; err != nil {
+		t.Fatalf("set group policy: %v", err)
+	}
+
+	if affected, err := (&ClientService{}).AddToGroup([]string{client.Email}, "premium"); err == nil || affected != 0 {
+		t.Fatalf("AddToGroup = (%d, %v), want rejected without changes", affected, err)
+	}
+	var after model.ClientRecord
+	if err := db.First(&after, client.Id).Error; err != nil {
+		t.Fatalf("reload client: %v", err)
+	}
+	if after.Group != "legacy" {
+		t.Fatalf("client group = %q, want unchanged legacy group", after.Group)
+	}
+}

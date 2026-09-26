@@ -1320,6 +1320,10 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 			skip(email, "at least one inbound is required")
 			continue
 		}
+		if err := (&ClientGroupInboundService{}).ValidateInboundAttachments(client.Group, payloads[i].InboundIds); err != nil {
+			skip(email, err.Error())
+			continue
+		}
 		if err := (&ClientHostService{}).ValidateGroupIDs(payloads[i].HostGroupIds); err != nil {
 			skip(email, err.Error())
 			continue

@@ -244,6 +244,29 @@ func (s *ClientService) AddToGroup(emails []string, group string) (int, error) {
 	if len(records) == 0 {
 		return 0, nil
 	}
+	if group != "" {
+		allowedInboundIDs, restricted, err := (&ClientGroupInboundService{}).RestrictedInboundIDs(group)
+		if err != nil {
+			return 0, err
+		}
+		if restricted {
+			clientIDs := make([]int, 0, len(records))
+			for _, record := range records {
+				clientIDs = append(clientIDs, record.Id)
+			}
+			links := db.Model(&model.ClientInbound{}).Where("client_id IN ?", clientIDs)
+			if len(allowedInboundIDs) > 0 {
+				links = links.Where("inbound_id NOT IN ?", allowedInboundIDs)
+			}
+			var blockedClientIDs []int
+			if err := links.Distinct("client_id").Pluck("client_id", &blockedClientIDs).Error; err != nil {
+				return 0, err
+			}
+			if len(blockedClientIDs) > 0 {
+				return 0, common.NewError("detach clients from inbounds outside the destination group policy before moving them")
+			}
+		}
+	}
 	affectedEmails := make([]string, 0, len(records))
 	for _, r := range records {
 		affectedEmails = append(affectedEmails, r.Email)

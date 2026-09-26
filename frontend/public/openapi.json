@@ -7952,7 +7952,7 @@
         "tags": [
           "Clients"
         ],
-        "summary": "Fetch one client by email, including the inbound IDs and external config IDs it is attached to.",
+        "summary": "Fetch one client by email, including legacy attachments, HostGroup assignments, and resolved access policy from its administrative client group.",
         "operationId": "get_panel_api_clients_get_email",
         "parameters": [
           {
@@ -9616,6 +9616,165 @@
                     "cdn-a",
                     "cdn-b"
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/groups/{name}/inbounds": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Return the inbound IDs explicitly assigned to the given client group. An empty list preserves legacy behavior until group inbound policy is enabled.",
+        "operationId": "get_panel_api_clients_groups_name_inbounds",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Group name (URL-encoded).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    1,
+                    2
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Replace the inbound assignments for the given client group. The assignments are the logical source for the future derived client-to-inbound runtime projection.",
+        "operationId": "post_panel_api_clients_groups_name_inbounds",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Group name (URL-encoded).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "inboundIds": [
+                  1,
+                  2
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    1,
+                    2
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/groups/{name}/inboundPolicy": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Return the group inbound policy state and assigned inbound IDs. Legacy groups report policyState=legacy; explicitly configured groups report policyState=restricted, including an empty list.",
+        "operationId": "get_panel_api_clients_groups_name_inboundPolicy",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Group name (URL-encoded).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "groupName": "customer-a",
+                    "policyState": "restricted",
+                    "inboundIds": []
+                  }
                 }
               }
             }
