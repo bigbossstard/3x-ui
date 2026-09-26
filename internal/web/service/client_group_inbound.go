@@ -54,9 +54,9 @@ func (s *ClientGroupInboundService) GetInboundIDs(groupName string) ([]int, erro
 func (s *ClientGroupInboundService) GetPolicy(groupName string) (ClientGroupInboundPolicy, error) {
 	groupName = strings.TrimSpace(groupName)
 	policy := ClientGroupInboundPolicy{
-		GroupName: groupName,
+		GroupName:   groupName,
 		PolicyState: model.ClientGroupPolicyLegacy,
-		InboundIDs: []int{},
+		InboundIDs:  []int{},
 	}
 	if groupName == "" {
 		return policy, nil
@@ -88,13 +88,13 @@ func (s *ClientGroupInboundService) GetPolicy(groupName string) (ClientGroupInbo
 	return policy, nil
 }
 
-func (s *ClientGroupInboundService) SetInboundIDs(groupName string, inboundIDs []int) error {
+func (s *ClientGroupInboundService) SetInboundIDs(groupName string, inboundIDs []int) (bool, error) {
 	groupName = strings.TrimSpace(groupName)
 	if groupName == "" {
-		return common.NewError("client group name is required")
+		return false, common.NewError("client group name is required")
 	}
 	inboundIDs = normalizeInboundIDs(inboundIDs)
-	return database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
 		var groupCount int64
 		if err := tx.Model(&model.ClientGroup{}).Where("name = ?", groupName).Count(&groupCount).Error; err != nil {
 			return err
@@ -134,7 +134,7 @@ func (s *ClientGroupInboundService) SetInboundIDs(groupName string, inboundIDs [
 		}
 		if result.RowsAffected == 0 {
 			if err := tx.Create(&model.ClientGroup{
-				Name: groupName,
+				Name:        groupName,
 				PolicyState: model.ClientGroupPolicyRestricted,
 			}).Error; err != nil {
 				return err
@@ -148,7 +148,10 @@ func (s *ClientGroupInboundService) SetInboundIDs(groupName string, inboundIDs [
 			return nil
 		}
 		return tx.Create(&rows).Error
-	})
+	}); err != nil {
+		return false, err
+	}
+	return (&ClientService{}).EnforceGroupInboundPolicy(&InboundService{}, groupName, inboundIDs)
 }
 
 func (s *ClientGroupInboundService) DeleteForClientGroup(groupName string) error {

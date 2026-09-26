@@ -86,12 +86,17 @@ func (a *GroupController) setInbounds(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	if err := (&service.ClientGroupInboundService{}).SetInboundIDs(c.Param("name"), body.InboundIds); err != nil {
+	groupName := c.Param("name")
+	needRestart, err := (&service.ClientGroupInboundService{}).SetInboundIDs(groupName, body.InboundIds)
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
+	notifyClientsChanged()
+	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
 	jsonObj(c, body.InboundIds, nil)
-	notifyClientsChanged()
 }
 
 func (a *GroupController) list(c *gin.Context) {

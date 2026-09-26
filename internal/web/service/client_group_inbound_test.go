@@ -19,7 +19,7 @@ func TestClientGroupInboundAssignmentsPersistAndValidate(t *testing.T) {
 	}
 
 	svc := &ClientGroupInboundService{}
-	if err := svc.SetInboundIDs("paid", []int{2, 1, 2}); err != nil {
+	if _, err := svc.SetInboundIDs("paid", []int{2, 1, 2}); err != nil {
 		t.Fatalf("set assignments: %v", err)
 	}
 	got, err := svc.GetInboundIDs("paid")
@@ -29,7 +29,7 @@ func TestClientGroupInboundAssignmentsPersistAndValidate(t *testing.T) {
 	if want := []int{1, 2}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("assignments = %v, want %v", got, want)
 	}
-	if err := svc.SetInboundIDs("paid", []int{99}); err == nil {
+	if _, err := svc.SetInboundIDs("paid", []int{99}); err == nil {
 		t.Fatal("invalid inbound assignment succeeded")
 	}
 	got, err = svc.GetInboundIDs("paid")
@@ -52,7 +52,7 @@ func TestClientGroupInboundAssignmentsFollowGroupLifecycle(t *testing.T) {
 		t.Fatalf("create inbound: %v", err)
 	}
 
-	if err := (&ClientGroupInboundService{}).SetInboundIDs("old", []int{1}); err != nil {
+	if _, err := (&ClientGroupInboundService{}).SetInboundIDs("old", []int{1}); err != nil {
 		t.Fatalf("set assignments: %v", err)
 	}
 
@@ -86,7 +86,7 @@ func TestClientGroupInboundEmptyAssignmentIsRestricted(t *testing.T) {
 	if err := db.Create(&model.ClientGroup{Name: "empty"}).Error; err != nil {
 		t.Fatalf("create group: %v", err)
 	}
-	if err := (&ClientGroupInboundService{}).SetInboundIDs("empty", nil); err != nil {
+	if _, err := (&ClientGroupInboundService{}).SetInboundIDs("empty", nil); err != nil {
 		t.Fatalf("set empty assignment: %v", err)
 	}
 	var group model.ClientGroup

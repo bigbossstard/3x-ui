@@ -56,13 +56,18 @@ explicit `client_groups.policy_state`:
   policy;
 - an individual `client_hosts` assignment remains a compatibility override for Host selection.
 
-This policy currently filters generated subscriptions only. It does **not** detach clients from
-`client_inbounds`, remove client credentials from Xray, or push a client delta to a remote node.
-The Xray config and node reconciler still treat inbound settings and `client_inbounds` as runtime
-state. Therefore an inbound policy must not be described as runtime access revocation until a
-separate projection/reconciliation change computes the effective attachment delta and applies it
-through `runtime.Runtime` (including offline-node dirty reconciliation). A restart alone does not
-enforce the policy.
+When an inbound policy is saved, the panel removes existing client attachments outside the
+allowlist through the established client deletion path. Local removals use the inbound's runtime
+API/sidecar apply path; remote-node removals use the remote runtime API and mark offline nodes dirty
+in the same database transaction so reconnect reconciliation reapplies the deletion. A local Xray
+restart is requested only when the existing deletion path reports it is required.
+If a local detach fails after the policy transaction commits, the endpoint reports the failure;
+retrying the same policy is idempotent and retries remaining detachments.
+
+This is intentionally deny-only: newly allowed inbounds are not automatically populated with
+clients. Provisioning may require protocol-specific credentials (notably WireGuard/AmneziaWG,
+MTProto and TUIC), so clients still need to be attached through the normal supported client flow.
+Individual `client_hosts` continue to override group Host selection for compatibility.
 
 ## Subscription integration
 
