@@ -312,6 +312,7 @@ func validateInboundClientGroupPolicy(tx *gorm.DB, inboundID int, clients []mode
 	if tx == nil || len(clients) == 0 {
 		return nil
 	}
+
 	groupsByEmail := make(map[string]string, len(clients))
 	existingGroupByEmail := make(map[string]string, len(existing))
 	for email, record := range existing {
@@ -377,6 +378,37 @@ func validateInboundClientGroupPolicy(tx *gorm.DB, inboundID int, clients []mode
 		}
 	}
 	return nil
+}
+
+func validateInboundClientGroupPolicyByEmail(tx *gorm.DB, inboundID int, clients []model.Client) error {
+	if tx == nil {
+		tx = database.GetDB()
+	}
+	emails := make([]string, 0, len(clients))
+	seen := make(map[string]struct{}, len(clients))
+	for _, client := range clients {
+		email := strings.ToLower(strings.TrimSpace(client.Email))
+		if email == "" {
+			continue
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		emails = append(emails, email)
+	}
+	existing := make(map[string]*model.ClientRecord, len(emails))
+	for _, batch := range chunkStrings(emails, sqlInChunk) {
+		var rows []model.ClientRecord
+		if err := tx.Where("LOWER(email) IN ?", batch).Find(&rows).Error; err != nil {
+			return err
+		}
+		for i := range rows {
+			row := rows[i]
+			existing[row.Email] = &row
+		}
+	}
+	return validateInboundClientGroupPolicy(tx, inboundID, clients, existing)
 }
 
 func (s *ClientService) DetachInbound(tx *gorm.DB, inboundId int) error {

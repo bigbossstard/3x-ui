@@ -141,6 +141,7 @@ func TestCreateRejectsAttachmentOutsideRestrictedGroupPolicy(t *testing.T) {
 	if err := db.Create(group).Error; err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+
 	allowed := &model.Inbound{Tag: "create-allowed", Port: 44501, Protocol: model.VLESS, Settings: `{"clients":[]}`}
 	blocked := &model.Inbound{Tag: "create-blocked", Port: 44502, Protocol: model.VLESS, Settings: `{"clients":[]}`}
 	if err := db.Create(allowed).Error; err != nil {
@@ -166,6 +167,37 @@ func TestCreateRejectsAttachmentOutsideRestrictedGroupPolicy(t *testing.T) {
 	var count int64
 	if err := db.Model(&model.ClientRecord{}).Where("email = ?", "new-rejected@x").Count(&count).Error; err != nil {
 		t.Fatalf("count client record: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("rejected client record count = %d, want 0", count)
+	}
+}
+
+func TestAddInboundClientRejectsRestrictedGroupBeforeRuntimePush(t *testing.T) {
+	setupBulkDB(t)
+	nodeID, fake := setupNodeRuntime(t)
+	inbound := nodeInbound(t, nodeID, 44505, nil)
+	group := &model.ClientGroup{Name: "premium", PolicyState: model.ClientGroupPolicyRestricted}
+	if err := database.GetDB().Create(group).Error; err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	client := model.Client{
+		ID: uuid.NewString(), Email: "add-blocked@x", SubID: "add-blocked-sub",
+		Group: "premium", Enable: true,
+	}
+	_, err := (&ClientService{}).AddInboundClient(&InboundService{}, &model.Inbound{
+		Id: inbound.Id, Protocol: model.VLESS, Settings: clientsSettings(t, []model.Client{client}),
+	})
+	if err == nil {
+		t.Fatal("AddInboundClient accepted a restricted-group client on a disallowed inbound")
+	}
+	if got := fake.addClient.Load(); got != 0 {
+		t.Fatalf("runtime AddClient calls = %d, want 0 for rejected attachment", got)
+	}
+	var count int64
+	if err := database.GetDB().Model(&model.ClientRecord{}).Where("email = ?", client.Email).Count(&count).Error; err != nil {
+		t.Fatalf("count rejected client record: %v", err)
 	}
 	if count != 0 {
 		t.Fatalf("rejected client record count = %d, want 0", count)

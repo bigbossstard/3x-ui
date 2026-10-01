@@ -336,6 +336,10 @@ func (s *ClientService) AddInboundClient(inboundSvc *InboundService, data *model
 		return false, err
 	}
 
+	if err := validateInboundClientGroupPolicyByEmail(database.GetDB(), data.Id, clients); err != nil {
+		return false, err
+	}
+
 	interfaceClients := settings["clients"].([]any)
 	nowTs := time.Now().Unix() * 1000
 	for i := range interfaceClients {
