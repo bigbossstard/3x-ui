@@ -959,6 +959,7 @@
       "hostGroupsFor": "{name} のホスト",
       "hostGroups": "ホスト",
       "hostsEmptyMeansLegacy": "空欄にすると従来どおりすべてのホストを使用します",
+      "inboundPolicyHelp": "保存すると、このグループのクライアントは許可されていないインバウンドから切り離されます。新たに許可されたインバウンドへは自動追加されません。通常のクライアント操作で追加してください。",
       "clientCount": "クライアント",
       "totalGroups": "グループ合計",
       "totalGroupedClients": "グループのあるクライアント",

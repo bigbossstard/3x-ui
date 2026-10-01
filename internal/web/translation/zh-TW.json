@@ -959,6 +959,7 @@
       "hostGroupsFor": "{name} 的主機",
       "hostGroups": "主機",
       "hostsEmptyMeansLegacy": "留空以使用舊版的全部主機行為",
+      "inboundPolicyHelp": "儲存後，此群組的用戶端會從未允許的入站移除。新允許的入站不會自動加入用戶端；請透過一般用戶端流程新增。",
       "clientCount": "客戶端",
       "totalGroups": "群組總數",
       "totalGroupedClients": "有群組的客戶端",

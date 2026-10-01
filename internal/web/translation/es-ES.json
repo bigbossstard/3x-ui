@@ -959,6 +959,7 @@
       "hostGroupsFor": "Hosts para {name}",
       "hostGroups": "Hosts",
       "hostsEmptyMeansLegacy": "Déjelo vacío para usar el comportamiento anterior con todos los hosts",
+      "inboundPolicyHelp": "Al guardar, se desconectará a los clientes de este grupo de los inbounds no permitidos. Los inbounds permitidos recientemente no se rellenan automáticamente; adjunte clientes mediante el flujo habitual.",
       "clientCount": "Clientes",
       "totalGroups": "Total de grupos",
       "totalGroupedClients": "Clientes con grupo",

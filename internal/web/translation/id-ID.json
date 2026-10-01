@@ -959,6 +959,7 @@
       "hostGroupsFor": "Host untuk {name}",
       "hostGroups": "Host",
       "hostsEmptyMeansLegacy": "Biarkan kosong untuk menggunakan perilaku lama dengan semua host",
+      "inboundPolicyHelp": "Saat disimpan, klien grup ini akan dilepas dari inbound yang tidak diizinkan. Inbound yang baru diizinkan tidak diisi otomatis; tambahkan klien melalui alur klien biasa.",
       "clientCount": "Klien",
       "totalGroups": "Total grup",
       "totalGroupedClients": "Klien dengan grup",

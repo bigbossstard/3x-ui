@@ -959,6 +959,7 @@
       "hostGroupsFor": "{name} 的主机",
       "hostGroups": "主机",
       "hostsEmptyMeansLegacy": "留空以使用旧版的全部主机行为",
+      "inboundPolicyHelp": "保存后，此组客户端将从未获准的入站中移除。新获准的入站不会自动添加客户端；请通过常规客户端流程添加。",
       "clientCount": "客户端",
       "totalGroups": "分组总数",
       "totalGroupedClients": "有分组的客户端",

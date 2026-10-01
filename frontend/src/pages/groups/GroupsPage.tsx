@@ -1,6 +1,7 @@
 import { lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -796,6 +797,12 @@ export default function GroupsPage() {
           onOk={saveInboundPolicy}
           destroyOnHidden
         >
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={t('pages.groups.inboundPolicyHelp')}
+          />
           <Select
             mode="multiple"
             allowClear

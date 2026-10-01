@@ -959,6 +959,7 @@
       "hostGroupsFor": "Hosts for {name}",
       "hostGroups": "Hosts",
       "hostsEmptyMeansLegacy": "Leave empty to use legacy all-host behavior",
+      "inboundPolicyHelp": "Saving removes this group's clients from disallowed inbounds. Newly allowed inbounds are not populated automatically; attach clients through the normal client flow.",
       "clientCount": "Clients",
       "totalGroups": "Total groups",
       "totalGroupedClients": "Clients with a group",

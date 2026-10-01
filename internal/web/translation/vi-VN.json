@@ -959,6 +959,7 @@
       "hostGroupsFor": "Host cho {name}",
       "hostGroups": "Host",
       "hostsEmptyMeansLegacy": "Để trống để dùng hành vi cũ với tất cả máy chủ",
+      "inboundPolicyHelp": "Khi lưu, các máy khách trong nhóm sẽ bị ngắt khỏi inbound không được phép. Inbound mới được cho phép sẽ không tự động thêm máy khách; hãy thêm bằng quy trình máy khách thông thường.",
       "clientCount": "Client",
       "totalGroups": "Tổng số nhóm",
       "totalGroupedClients": "Client có nhóm",

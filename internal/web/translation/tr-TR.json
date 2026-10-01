@@ -959,6 +959,7 @@
       "hostGroupsFor": "{name} için hostlar",
       "hostGroups": "Hostlar",
       "hostsEmptyMeansLegacy": "Tüm ana bilgisayarların eski davranışını kullanmak için boş bırakın",
+      "inboundPolicyHelp": "Kaydedildiğinde bu grubun istemcileri izin verilmeyen inbound bağlantılarından ayrılır. Yeni izin verilen inbound'lara istemciler otomatik eklenmez; normal istemci akışını kullanın.",
       "clientCount": "Kullanıcılar",
       "totalGroups": "Toplam grup",
       "totalGroupedClients": "Grubu olan kullanıcılar",
