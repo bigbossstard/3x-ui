@@ -57,9 +57,9 @@ func audit3LogsStart(t *testing.T, level, marker, relayAddr string) (*Server, *c
 	if _, err := auth.Write(frame); err != nil {
 		t.Fatal(err)
 	}
-	if err := auth.Close(); err != nil {
-		t.Fatal(err)
-	}
+	// The server cancels the receive side after reading this size-delimited
+	// frame, so STOP_SENDING can race with the FIN from Close.
+	_ = auth.Close()
 	_, _ = authenticatedServerConnection(t, s, id)
 	return s, c, id, password, token
 }

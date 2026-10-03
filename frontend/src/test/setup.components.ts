@@ -92,8 +92,8 @@ afterEach(async () => {
    * because a microtask resolving mid-drain (rc-trigger/AntD) can queue a new
    * one behind the first.
    */
-  for (let i = 0; i < 3; i += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  for (let i = 0; i < 8; i += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 });
 

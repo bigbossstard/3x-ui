@@ -448,9 +448,9 @@ func testServerUDPStreamE2E(t *testing.T, controller string) {
 	if _, err := authStream.Write(authPayload); err != nil {
 		t.Fatalf("write authentication payload failed: %v", err)
 	}
-	if err := authStream.Close(); err != nil {
-		t.Fatalf("close authentication stream failed: %v", err)
-	}
+	// The server cancels the receive side after consuming the size-delimited
+	// authentication frame; the response below confirms it was accepted.
+	_ = authStream.Close()
 
 	target := &Address{Type: AddrTypeIPv4, IP: net.ParseIP("8.8.8.8"), Port: 53}
 	udpMsg := bytes.Repeat([]byte("s"), 8500)
@@ -473,9 +473,9 @@ func testServerUDPStreamE2E(t *testing.T, controller string) {
 		if _, err := packetStream.Write(frame.Bytes()); err != nil {
 			t.Fatalf("write packet frame failed: %v", err)
 		}
-		if err := packetStream.Close(); err != nil {
-			t.Fatalf("close packet stream failed: %v", err)
-		}
+		// The server cancels the receive side after consuming each packet; the
+		// reply below is the end-to-end success check.
+		_ = packetStream.Close()
 	}
 
 	replyReassembler := newPacketReassembler(maxUdpRelayPacketSize)

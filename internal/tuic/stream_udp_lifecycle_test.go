@@ -57,9 +57,9 @@ func startLifecycleTestServer(t *testing.T, relayAddr, email string) (*Server, *
 	if _, err := stream.Write(auth); err != nil {
 		t.Fatalf("write authentication: %v", err)
 	}
-	if err := stream.Close(); err != nil {
-		t.Fatalf("close authentication stream: %v", err)
-	}
+	// Authentication is size-delimited; server-side cancellation may race
+	// with this FIN. authenticatedServerConnection below confirms acceptance.
+	_ = stream.Close()
 	return server, client, clientID, password
 }
 

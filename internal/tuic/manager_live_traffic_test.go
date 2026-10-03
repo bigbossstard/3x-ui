@@ -166,9 +166,9 @@ func TestAudit3ManagerEnsureActualSendersWithPersistentTraffic(t *testing.T) {
 		if _, err := auth.Write(authBytes); err != nil {
 			t.Fatal(err)
 		}
-		if err := auth.Close(); err != nil {
-			t.Fatal(err)
-		}
+		// Authentication is size-delimited too; a server-side read cancel can
+		// race with this FIN. The sender checks below wait for auth to complete.
+		_ = auth.Close()
 
 		waitForClientCongestionSender(t, server, client, served)
 		var serverConn *quic.Conn
