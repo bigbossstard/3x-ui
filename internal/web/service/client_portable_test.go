@@ -477,6 +477,5 @@ func TestImportClientsDuplicateEmailRestoresCreatedCopy(t *testing.T) {
 				t.Fatalf("traffic up=%d down=%d, want the created copy's 11/12", row.Up, row.Down)
 			}
 		})
-
 	}
 }
