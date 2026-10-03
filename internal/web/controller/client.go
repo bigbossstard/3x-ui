@@ -60,10 +60,13 @@ func (a *ClientController) initRouter(g *gin.RouterGroup) {
 	g.POST("/happLink/:id", a.generateHappLink)
 
 	g.POST("/add", a.create)
+	g.POST("/renewalPreview", a.renewalPreview)
 	g.POST("/update/:email", a.update)
 	g.POST("/del/:email", a.delete)
 	g.POST("/:email/attach", a.attach)
 	g.POST("/:email/detach", a.detach)
+	g.GET("/:email/hosts", a.getHosts)
+	g.POST("/:email/hosts", a.setHosts)
 	g.POST("/:email/externalLinks", a.setExternalLinks)
 	g.GET("/export", a.export)
 	g.POST("/import", a.importClients)
@@ -99,6 +102,16 @@ func (a *ClientController) list(c *gin.Context) {
 		return
 	}
 	jsonObj(c, rows, nil)
+}
+
+func (a *ClientController) renewalPreview(c *gin.Context) {
+	var request service.ClientRenewalPreviewRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+	preview, err := a.clientService.PreviewRenewal(request, &a.settingService)
+	jsonObj(c, preview, err)
 }
 
 func (a *ClientController) listPaged(c *gin.Context) {
@@ -137,12 +150,17 @@ func (a *ClientController) buildClientPayload(rec *model.ClientRecord) (gin.H, e
 	if err != nil {
 		return nil, err
 	}
+	hostGroupIds, err := (&service.ClientHostService{}).GetGroupIDs(rec.Id)
+	if err != nil {
+		return nil, err
+	}
 	return gin.H{
 		"client":           rec,
 		"inboundIds":       inboundIds,
 		"externalLinks":    externalLinks,
 		"usedTraffic":      usedTraffic,
 		"tunnelAllowedIPs": tunnelAllowedIPs,
+		"hostGroupIds":     hostGroupIds,
 	}, nil
 }
 
@@ -191,21 +209,29 @@ func (a *ClientController) create(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	needRestart, err := a.clientService.Create(&a.inboundService, &payload)
-	// Flagged before the error check: a partly-applied create leaves clients
-	// committed on the inbounds that succeeded, and those still need the restart.
-	if needRestart {
-		a.xrayService.SetToNeedRestart()
-	}
-	// A partly-applied call committed real clients; a rejected one touched
-	// nothing, and broadcasting those would refetch every panel for nothing.
-	if needRestart || err == nil {
-		notifyClientsChanged()
-	}
-	if err != nil {
+	if err := (&service.ClientHostService{}).ValidateGroupIDs(payload.HostGroupIds); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	needRestart, err := a.clientService.Create(&a.inboundService, &payload)
+	if err != nil {
+		if needRestart {
+			a.xrayService.SetToNeedRestart()
+			notifyClientsChanged()
+		}
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if len(payload.HostGroupIds) > 0 {
+		if setErr := (&service.ClientHostService{}).SetGroupIDsByEmail(payload.Client.Email, payload.HostGroupIds); setErr != nil {
+			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), setErr)
+			return
+		}
+	}
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
+	notifyClientsChanged()
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), pendingNodeObj(a.inboundService.AnyNodePending(payload.InboundIds)), nil)
 }
 
@@ -213,14 +239,27 @@ func (a *ClientController) update(c *gin.Context) {
 	email := c.Param("email")
 	var req struct {
 		model.Client
-		LimitHwid int `json:"limitHwid"`
+		LimitHwid    int       `json:"limitHwid"`
+		HostGroupIds *[]string `json:"hostGroupIds"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	if req.HostGroupIds != nil {
+		if err := (&service.ClientHostService{}).ValidateGroupIDs(*req.HostGroupIds); err != nil {
+			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+			return
+		}
+	}
 	inboundFilter := parseInboundIdsQuery(c.Query("inboundIds"))
 	needRestart, err := a.clientService.UpdateByEmail(&a.inboundService, email, req.Client, req.LimitHwid, inboundFilter...)
+	if err == nil && req.HostGroupIds != nil {
+		if setErr := (&service.ClientHostService{}).SetGroupIDsByEmail(req.Email, *req.HostGroupIds); setErr != nil {
+			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), setErr)
+			return
+		}
+	}
 	// Flagged before the error check: a partly-applied edit leaves the change
 	// committed on the inbounds that succeeded, and those still need the restart.
 	if needRestart {
@@ -288,6 +327,33 @@ func (a *ClientController) attach(c *gin.Context) {
 		return
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), pendingNodeObj(a.inboundService.AnyNodePending(body.InboundIds)), nil)
+}
+
+func (a *ClientController) getHosts(c *gin.Context) {
+	email := c.Param("email")
+	ids, err := (&service.ClientHostService{}).GetGroupIDsByEmail(email)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, ids, nil)
+}
+
+func (a *ClientController) setHosts(c *gin.Context) {
+	email := c.Param("email")
+	var body struct {
+		HostGroupIds []string `json:"hostGroupIds"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if err := (&service.ClientHostService{}).SetGroupIDsByEmail(email, body.HostGroupIds); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	notifyClientsChanged()
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
 }
 
 func (a *ClientController) setExternalLinks(c *gin.Context) {
@@ -506,15 +572,19 @@ func (a *ClientController) importClients(c *gin.Context) {
 		return
 	}
 	result, needRestart, err := a.clientService.ImportClients(&a.inboundService, items)
+	// Flagged before the error check: a failed traffic restore still leaves the
+	// clients created before it committed, and those need the restart and refresh.
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
+	if needRestart || result.Created > 0 || err == nil {
+		notifyClientsChanged()
+	}
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
 	jsonObj(c, result, nil)
-	if needRestart {
-		a.xrayService.SetToNeedRestart()
-	}
-	notifyClientsChanged()
 }
 
 func (a *ClientController) delOrphans(c *gin.Context) {
