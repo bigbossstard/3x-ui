@@ -355,13 +355,28 @@ func testServerUDPDatagramE2E(t *testing.T, controller string) {
 		t.Fatalf("expected %q, got %q", udpMsg, replyPayload)
 	}
 
-	// 4. Verify traffic
-	deltas := server.CollectClientTraffic()
-	if len(deltas) == 0 {
-		t.Fatalf("expected traffic deltas, got none")
+	// 4. Verify traffic. The local SOCKS UDP echo can return on another
+	// goroutine before the Send call records its upload counter, so collect
+	// until both directions have been observed rather than assuming that the
+	// echo reply and accounting update become visible in the same scheduling
+	// slice (especially under -race).
+	var delta ClientTrafficDelta
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		for _, next := range server.CollectClientTraffic() {
+			if next.Email == "bob@example.com" {
+				delta.Email = next.Email
+				delta.Up += next.Up
+				delta.Down += next.Down
+			}
+		}
+		if delta.Up >= int64(len(udpMsg)) && delta.Down >= int64(len(udpMsg)) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	if deltas[0].Email != "bob@example.com" || deltas[0].Up < int64(len(udpMsg)) || deltas[0].Down < int64(len(udpMsg)) {
-		t.Fatalf("unexpected traffic deltas: %+v", deltas[0])
+	if delta.Email != "bob@example.com" || delta.Up < int64(len(udpMsg)) || delta.Down < int64(len(udpMsg)) {
+		t.Fatalf("unexpected traffic deltas: %+v", delta)
 	}
 }
 

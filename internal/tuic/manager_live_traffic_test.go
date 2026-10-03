@@ -96,9 +96,11 @@ func TestAudit3ManagerEnsureActualSendersWithPersistentTraffic(t *testing.T) {
 			if _, err := stream.Write(frame.Bytes()); err != nil {
 				t.Fatal(err)
 			}
-			if err := stream.Close(); err != nil {
-				t.Fatal(err)
-			}
+			// The server cancels the read side after consuming the size-delimited
+			// packet. That STOP_SENDING can race with this FIN, so Close may report
+			// a canceled stream even though the packet was accepted. The echoed
+			// response below is the end-to-end success check.
+			_ = stream.Close()
 			response, err := p.client.AcceptUniStream(ctx)
 			if err != nil {
 				t.Fatal(err)
