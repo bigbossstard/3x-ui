@@ -415,6 +415,7 @@ export const ClientPageResponseSchema = z.object({
 export type ClientPageResponse = z.infer<typeof ClientPageResponseSchema>;
 
 export const ClientRecordSchema = z.object({
+  accessMode: z.string(),
   adTag: z.string(),
   allowedIPs: z.string(),
   auth: z.string(),
@@ -426,6 +427,7 @@ export const ClientRecordSchema = z.object({
   flow: z.string(),
   forwardedPorts: z.string(),
   group: z.string(),
+  groupIds: z.array(z.number().int()).optional(),
   id: z.number().int(),
   keepAlive: z.number().int(),
   limitHwid: z.number().int(),

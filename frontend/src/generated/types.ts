@@ -393,6 +393,7 @@ export interface ClientPageResponse {
 }
 
 export interface ClientRecord {
+  accessMode: string;
   adTag: string;
   allowedIPs: string;
   auth: string;
@@ -404,6 +405,7 @@ export interface ClientRecord {
   flow: string;
   forwardedPorts: string;
   group: string;
+  groupIds?: number[];
   id: number;
   keepAlive: number;
   limitHwid: number;

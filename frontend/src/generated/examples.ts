@@ -359,6 +359,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "flow": "",
     "forwardedPorts": "",
     "group": "",
+    "groupIds": [
+      0
+    ],
     "id": "",
     "keepAlive": null,
     "limitIp": 0,
@@ -435,6 +438,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "total": 2000
   },
   "ClientRecord": {
+    "accessMode": "",
     "adTag": "",
     "allowedIPs": "",
     "auth": "",
