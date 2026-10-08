@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -13,11 +14,13 @@ import (
 )
 
 type GroupSummary struct {
+	Id          int   `json:"id"`
 	Name        string `json:"name"`
-	ClientCount int    `json:"clientCount"`
-	TrafficUsed int64  `json:"trafficUsed"`
-	Up          int64  `json:"up"`
-	Down        int64  `json:"down"`
+	ClientCount int   `json:"clientCount"`
+	TrafficUsed int64 `json:"trafficUsed"`
+	Up          int64 `json:"up"`
+	Down        int64 `json:"down"`
+	InboundIds  []int `json:"inboundIds,omitempty"`
 }
 
 func (s *ClientService) ListGroups() ([]GroupSummary, error) {
@@ -36,6 +39,16 @@ func (s *ClientService) ListGroups() ([]GroupSummary, error) {
 	var stored []model.ClientGroup
 	if err := db.Find(&stored).Error; err != nil {
 		return nil, err
+	}
+	accessByGroup := make(map[int][]int, len(stored))
+	if len(stored) > 0 {
+		var links []model.ClientGroupInbound
+		if err := db.Order("group_id ASC").Order("inbound_id ASC").Find(&links).Error; err != nil {
+			return nil, err
+		}
+		for _, link := range links {
+			accessByGroup[link.GroupId] = append(accessByGroup[link.GroupId], link.InboundId)
+		}
 	}
 	type groupAgg struct {
 		count int
@@ -57,7 +70,17 @@ func (s *ClientService) ListGroups() ([]GroupSummary, error) {
 	for name, agg := range merged {
 		up := max(agg.up-baseUp[name], 0)
 		down := max(agg.down-baseDown[name], 0)
-		out = append(out, GroupSummary{Name: name, ClientCount: agg.count, TrafficUsed: up + down, Up: up, Down: down})
+		id := 0
+		var inboundIds []int
+		for _, storedGroup := range stored {
+			if storedGroup.Name == name {
+				id = storedGroup.Id
+				inboundIds = accessByGroup[storedGroup.Id]
+				break
+			}
+		}
+		if inboundIds == nil { inboundIds = []int{} }
+		out = append(out, GroupSummary{Id: id, Name: name, ClientCount: agg.count, TrafficUsed: up + down, Up: up, Down: down, InboundIds: inboundIds})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
@@ -198,6 +221,12 @@ func (s *ClientService) DeleteGroup(name string) (int, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return 0, common.NewError("group name is required")
+	}
+	var group model.ClientGroup
+	if err := database.GetDB().Where("name = ?", name).First(&group).Error; err == nil {
+		if err := cleanupDeletedGroupAccess(database.GetDB(), group.Id); err != nil { return 0, err }
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
 	}
 	return s.replaceGroupValue(name, "")
 }

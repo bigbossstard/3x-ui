@@ -1281,6 +1281,8 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 		client     model.Client
 		inboundIds []int
 		limitHwid  int
+		accessMode string
+		groupIds   []int
 	}
 	prep := make([]prepared, 0, len(payloads))
 	emails := make([]string, 0, len(payloads))
@@ -1315,7 +1317,22 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 			skip(email, verr.Error())
 			continue
 		}
-		if len(payloads[i].InboundIds) == 0 {
+		accessMode := normalizeClientAccessMode(payloads[i].AccessMode, payloads[i].GroupIds)
+		groupIds := uniqueSortedInts(payloads[i].GroupIds)
+		inboundIds := uniqueSortedInts(payloads[i].InboundIds)
+		if accessMode == model.ClientAccessModeGroups {
+			if len(groupIds) == 0 {
+				skip(email, "at least one access group is required")
+				continue
+			}
+			resolved, rErr := s.ResolveInboundIdsForGroups(groupIds)
+			if rErr != nil {
+				skip(email, rErr.Error())
+				continue
+			}
+			inboundIds = resolved
+		}
+		if len(inboundIds) == 0 {
 			skip(email, "at least one inbound is required")
 			continue
 		}
@@ -1343,7 +1360,7 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 		seenEmail[le] = struct{}{}
 		seenSubID[client.SubID] = le
 
-		prep = append(prep, prepared{client: client, inboundIds: payloads[i].InboundIds, limitHwid: payloads[i].LimitHwid})
+		prep = append(prep, prepared{client: client, inboundIds: inboundIds, limitHwid: payloads[i].LimitHwid, accessMode: accessMode, groupIds: groupIds})
 		emails = append(emails, email)
 		subIDs = append(subIDs, client.SubID)
 	}
@@ -1496,6 +1513,15 @@ func (s *ClientService) BulkCreate(inboundSvc *InboundService, payloads []Client
 		if err := s.setClientLimitHwidByEmail(nil, prep[idx].client.Email, prep[idx].limitHwid); err != nil {
 			skip(prep[idx].client.Email, err.Error())
 			continue
+		}
+		rec, recErr := s.GetRecordByEmail(nil, prep[idx].client.Email)
+		if recErr != nil {
+			return result, needRestart, recErr
+		}
+		accessRestart, accessErr := s.SetClientAccess(inboundSvc, rec.Id, prep[idx].accessMode, prep[idx].groupIds)
+		needRestart = needRestart || accessRestart
+		if accessErr != nil {
+			return result, needRestart, accessErr
 		}
 		createdEmails = append(createdEmails, prep[idx].client.Email)
 		result.Created++

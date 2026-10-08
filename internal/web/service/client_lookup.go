@@ -197,6 +197,16 @@ func (s *ClientService) List() ([]ClientWithAttachments, error) {
 			attachments[l.ClientId] = append(attachments[l.ClientId], l.InboundId)
 		}
 	}
+	groupIdsByClient := make(map[int][]int, len(rows))
+	for _, batch := range chunkInts(clientIds, sqlInChunk) {
+		var links []model.ClientGroupMember
+		if err := db.Where("client_id IN ?", batch).Order("group_id ASC").Find(&links).Error; err != nil {
+			return nil, err
+		}
+		for _, l := range links {
+			groupIdsByClient[l.ClientId] = append(groupIdsByClient[l.ClientId], l.GroupId)
+		}
+	}
 
 	trafficByEmail := make(map[string]*xray.ClientTraffic, len(emails))
 	if len(emails) > 0 {
@@ -216,6 +226,7 @@ func (s *ClientService) List() ([]ClientWithAttachments, error) {
 
 	out := make([]ClientWithAttachments, 0, len(rows))
 	for i := range rows {
+		rows[i].GroupIds = groupIdsByClient[rows[i].Id]
 		out = append(out, ClientWithAttachments{
 			ClientRecord: rows[i],
 			InboundIds:   attachments[rows[i].Id],

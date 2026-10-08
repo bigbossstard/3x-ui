@@ -939,6 +939,8 @@ type ClientRecord struct {
 	Enable          bool   `json:"enable" gorm:"default:true"`
 	TgID            int64  `json:"tgId" gorm:"column:tg_id;index:idx_clients_tg_id"`
 	Group           string `json:"group" gorm:"column:group_name;default:'';index:idx_client_record_group"`
+	AccessMode      string `json:"accessMode" gorm:"column:access_mode;default:legacy;index:idx_clients_access_mode"`
+	GroupIds        []int  `json:"groupIds,omitempty" gorm:"-"`
 	Comment         string `json:"comment"`
 	Reset           int    `json:"reset" gorm:"default:0"`
 	ResetDay        int    `json:"resetDay" gorm:"column:reset_day;default:0"`
@@ -968,6 +970,27 @@ func (ClientGroup) TableName() string { return "client_groups" }
 // MarshalJSON emits the reverse column as a nested JSON object rather than an
 // escaped JSON-text string, matching the same convention Inbound uses for its
 // JSON-text columns. Empty storage renders as null.
+const (
+	ClientAccessModeLegacy = "legacy"
+	ClientAccessModeGroups = "groups"
+)
+
+type ClientGroupMember struct {
+	ClientId  int   `json:"clientId" gorm:"primaryKey;column:client_id;index"`
+	GroupId   int   `json:"groupId" gorm:"primaryKey;column:group_id;index"`
+	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli"`
+}
+
+func (ClientGroupMember) TableName() string { return "client_group_members" }
+
+type ClientGroupInbound struct {
+	GroupId   int   `json:"groupId" gorm:"primaryKey;column:group_id;index"`
+	InboundId int   `json:"inboundId" gorm:"primaryKey;column:inbound_id;index"`
+	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli"`
+}
+
+func (ClientGroupInbound) TableName() string { return "client_group_inbounds" }
+
 func (r ClientRecord) MarshalJSON() ([]byte, error) {
 	type alias ClientRecord
 	return json.Marshal(struct {

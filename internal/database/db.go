@@ -74,6 +74,8 @@ func allModels() []any {
 		&model.Node{},
 		&model.ApiToken{},
 		&model.ClientRecord{},
+		&model.ClientGroupMember{},
+		&model.ClientGroupInbound{},
 		&model.ClientInbound{},
 		&model.ClientHwid{},
 		&model.ClientExternalLink{},

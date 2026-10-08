@@ -147,6 +147,21 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 		return false, err
 	}
 	normalizeClientTrafficReset(&client)
+	payload.GroupIds = uniqueSortedInts(payload.GroupIds)
+	payload.AccessMode = normalizeClientAccessMode(payload.AccessMode, payload.GroupIds)
+	if payload.AccessMode == model.ClientAccessModeGroups {
+		if len(payload.GroupIds) == 0 {
+			return false, common.NewError("at least one access group is required")
+		}
+		resolved, rErr := s.ResolveInboundIdsForGroups(payload.GroupIds)
+		if rErr != nil {
+			return false, rErr
+		}
+		payload.InboundIds = resolved
+		if len(payload.InboundIds) == 0 {
+			return false, common.NewError("selected access groups grant no inbounds")
+		}
+	}
 	if len(payload.InboundIds) == 0 {
 		return false, common.NewError("at least one inbound is required")
 	}
@@ -237,6 +252,15 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 	// A re-created email is a live identity again: a delete tombstone left
 	// standing makes the next node merge prune the new client's inbound links.
 	withdrawClientTombstones(client.Email)
+	rec, recErr := s.GetRecordByEmail(nil, client.Email)
+	if recErr != nil {
+		return needRestart, recErr
+	}
+	accessRestart, accessErr := s.SetClientAccess(inboundSvc, rec.Id, payload.AccessMode, payload.GroupIds)
+	needRestart = needRestart || accessRestart
+	if accessErr != nil {
+		return needRestart, accessErr
+	}
 	return needRestart, s.setClientLimitHwidByEmail(nil, client.Email, payload.LimitHwid)
 }
 
@@ -876,6 +900,9 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 			}
 		}
 		if err := tx.Where("client_id = ?", id).Delete(&model.ClientInbound{}).Error; err != nil {
+			return err
+		}
+		if err := cleanupClientAccessRelations(tx, id); err != nil {
 			return err
 		}
 		if err := tx.Where("client_id = ?", id).Delete(&model.ClientExternalLink{}).Error; err != nil {

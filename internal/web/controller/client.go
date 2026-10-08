@@ -137,9 +137,21 @@ func (a *ClientController) buildClientPayload(rec *model.ClientRecord) (gin.H, e
 	if err != nil {
 		return nil, err
 	}
+	groupIds, err := a.clientService.GetClientGroupIds(rec.Id)
+	if err != nil {
+		return nil, err
+	}
+	accessMode := rec.AccessMode
+	if accessMode == "" {
+		accessMode = model.ClientAccessModeLegacy
+	}
+	rec.AccessMode = accessMode
+	rec.GroupIds = groupIds
 	return gin.H{
 		"client":           rec,
 		"inboundIds":       inboundIds,
+		"groupIds":         groupIds,
+		"accessMode":       accessMode,
 		"externalLinks":    externalLinks,
 		"usedTraffic":      usedTraffic,
 		"tunnelAllowedIPs": tunnelAllowedIPs,
@@ -213,7 +225,9 @@ func (a *ClientController) update(c *gin.Context) {
 	email := c.Param("email")
 	var req struct {
 		model.Client
-		LimitHwid int `json:"limitHwid"`
+		LimitHwid  int    `json:"limitHwid"`
+		AccessMode string `json:"accessMode"`
+		GroupIds   []int  `json:"groupIds"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
@@ -221,6 +235,20 @@ func (a *ClientController) update(c *gin.Context) {
 	}
 	inboundFilter := parseInboundIdsQuery(c.Query("inboundIds"))
 	needRestart, err := a.clientService.UpdateByEmail(&a.inboundService, email, req.Client, req.LimitHwid, inboundFilter...)
+	if err == nil && (req.AccessMode != "" || req.GroupIds != nil) {
+		finalEmail := strings.TrimSpace(req.Client.Email)
+		if finalEmail == "" {
+			finalEmail = email
+		}
+		rec, recErr := a.clientService.GetRecordByEmail(nil, finalEmail)
+		if recErr != nil {
+			err = recErr
+		} else {
+			nr, accessErr := a.clientService.SetClientAccess(&a.inboundService, rec.Id, req.AccessMode, req.GroupIds)
+			needRestart = needRestart || nr
+			err = accessErr
+		}
+	}
 	// Flagged before the error check: a partly-applied edit leaves the change
 	// committed on the inbounds that succeeded, and those still need the restart.
 	if needRestart {

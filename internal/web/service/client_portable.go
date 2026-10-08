@@ -51,10 +51,16 @@ func (s *ClientService) ExportAll() ([]ClientCreatePayload, error) {
 		if flow, err := s.EffectiveFlow(db, rows[i].Id); err == nil && flow != "" {
 			client.Flow = flow
 		}
+		groupIds, gErr := s.GetClientGroupIds(rows[i].Id)
+		if gErr != nil {
+			return nil, gErr
+		}
 		out = append(out, ClientCreatePayload{
-			Client:     *client,
-			InboundIds: attachments[rows[i].Id],
-			LimitHwid:  rows[i].LimitHwid,
+			Client:      *client,
+			InboundIds:  attachments[rows[i].Id],
+			AccessMode:  normalizeClientAccessMode(rows[i].AccessMode, groupIds),
+			GroupIds:    groupIds,
+			LimitHwid:   rows[i].LimitHwid,
 		})
 	}
 	return out, nil
@@ -74,6 +80,15 @@ func (s *ClientService) ImportClients(inboundSvc *InboundService, items []Client
 	attached := make([]ClientCreatePayload, 0, len(items))
 	orphans := make([]ClientCreatePayload, 0)
 	for i := range items {
+		mode := normalizeClientAccessMode(items[i].AccessMode, items[i].GroupIds)
+		if mode == model.ClientAccessModeGroups && len(items[i].InboundIds) == 0 && len(items[i].GroupIds) > 0 {
+			resolved, rErr := s.ResolveInboundIdsForGroups(items[i].GroupIds)
+			if rErr != nil {
+				skip(items[i].Client.Email, rErr.Error())
+				continue
+			}
+			items[i].InboundIds = resolved
+		}
 		if len(items[i].InboundIds) > 0 {
 			attached = append(attached, items[i])
 		} else {

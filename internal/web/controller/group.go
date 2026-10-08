@@ -10,8 +10,9 @@ import (
 )
 
 type GroupController struct {
-	clientService service.ClientService
-	xrayService   service.XrayService
+	clientService  service.ClientService
+	inboundService service.InboundService
+	xrayService    service.XrayService
 }
 
 func NewGroupController(g *gin.RouterGroup) *GroupController {
@@ -23,6 +24,8 @@ func NewGroupController(g *gin.RouterGroup) *GroupController {
 func (a *GroupController) initRouter(g *gin.RouterGroup) {
 	g.GET("/groups", a.list)
 	g.GET("/groups/:name/emails", a.emails)
+	g.GET("/groups/:name/access", a.access)
+	g.POST("/groups/:name/access", a.setAccess)
 	g.POST("/groups/create", a.create)
 	g.POST("/groups/rename", a.rename)
 	g.POST("/groups/delete", a.delete)
@@ -99,12 +102,14 @@ func (a *GroupController) delete(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	affected, err := a.clientService.DeleteGroup(body.Name)
+	affected, needRestart, err := a.clientService.DeleteGroupWithAccess(&a.inboundService, body.Name)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	a.xrayService.SetToNeedRestart()
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
 	notifyClientsChanged()
 }
@@ -168,5 +173,36 @@ func (a *GroupController) bulkRemove(c *gin.Context) {
 	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
 	a.xrayService.SetToNeedRestart()
+	notifyClientsChanged()
+}
+
+type groupAccessBody struct {
+	InboundIds []int `json:"inboundIds"`
+}
+
+func (a *GroupController) access(c *gin.Context) {
+	access, err := a.clientService.GetGroupAccess(c.Param("name"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, access, nil)
+}
+
+func (a *GroupController) setAccess(c *gin.Context) {
+	var body groupAccessBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	affected, needRestart, err := a.clientService.SetGroupAccessByName(&a.inboundService, c.Param("name"), body.InboundIds)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
+	jsonObj(c, gin.H{"affected": affected}, nil)
 	notifyClientsChanged()
 }
