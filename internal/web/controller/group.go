@@ -147,10 +147,13 @@ func (a *GroupController) bulkAdd(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("group name is required"))
 		return
 	}
-	affected, err := a.clientService.AddToGroup(req.Emails, req.Group)
+	affected, needRestart, err := a.clientService.AddToGroupAccessAware(&a.inboundService, req.Emails, req.Group)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
+	}
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
 	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
 	notifyClientsChanged()
@@ -158,6 +161,7 @@ func (a *GroupController) bulkAdd(c *gin.Context) {
 
 type bulkRemoveFromGroupRequest struct {
 	Emails []string `json:"emails"`
+	Group  string   `json:"group"`
 }
 
 func (a *GroupController) bulkRemove(c *gin.Context) {
@@ -166,13 +170,15 @@ func (a *GroupController) bulkRemove(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	affected, err := a.clientService.RemoveFromGroup(req.Emails)
+	affected, needRestart, err := a.clientService.RemoveFromGroupAccessAware(&a.inboundService, req.Emails, req.Group)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
-	a.xrayService.SetToNeedRestart()
 	notifyClientsChanged()
 }
 

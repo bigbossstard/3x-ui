@@ -340,7 +340,7 @@ export function useClients(options: UseClientsOptions = {}) {
   });
 
   const bulkRemoveFromGroupMut = useMutation({
-    mutationFn: (body: { emails: string[] }) =>
+    mutationFn: (body: { emails: string[]; group: string }) =>
       HttpUtil.post('/panel/api/clients/groups/bulkRemove', body, JSON_HEADERS),
     onSuccess: (msg) => {
       if (msg?.success) invalidateAll();

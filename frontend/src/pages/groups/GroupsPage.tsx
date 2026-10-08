@@ -176,6 +176,16 @@ export default function GroupsPage() {
   });
   const allClients = allClientsQuery.data ?? [];
 
+  const clientBelongsToGroup = useCallback(
+    (client: ClientRecord, group: GroupSummary) =>
+      client.group === group.name ||
+      (group.id > 0 &&
+        client.accessMode === 'groups' &&
+        Array.isArray(client.groupIds) &&
+        client.groupIds.includes(group.id)),
+    [],
+  );
+
   const totalGroups = groups.length;
   const totalClients = useMemo(
     () => groups.reduce((acc, g) => acc + (g.clientCount || 0), 0),
@@ -684,7 +694,9 @@ export default function GroupsPage() {
           <GroupAddClientsModal
             open={addClientsOpen}
             groupName={groupForAction?.name ?? null}
-            candidates={allClients.filter((c) => c.group !== groupForAction?.name)}
+            candidates={allClients.filter(
+              (c) => groupForAction && !clientBelongsToGroup(c, groupForAction),
+            )}
             onClose={() => setAddClientsOpen(false)}
             onSubmit={async (emails) => {
               const msg = await bulkAddToGroup(emails, groupForAction?.name ?? '');
@@ -714,10 +726,12 @@ export default function GroupsPage() {
           <GroupRemoveClientsModal
             open={removeClientsOpen}
             groupName={groupForAction?.name ?? null}
-            members={allClients.filter((c) => c.group === groupForAction?.name)}
+            members={allClients.filter(
+              (c) => groupForAction && clientBelongsToGroup(c, groupForAction),
+            )}
             onClose={() => setRemoveClientsOpen(false)}
             onSubmit={async (emails) => {
-              const msg = await bulkRemoveFromGroup(emails);
+              const msg = await bulkRemoveFromGroup(emails, groupForAction?.name ?? '');
               if (msg?.success) {
                 return (msg.obj as { affected?: number } | undefined) ?? { affected: 0 };
               }
