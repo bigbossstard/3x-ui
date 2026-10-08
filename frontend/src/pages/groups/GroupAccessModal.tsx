@@ -48,15 +48,13 @@ export default function GroupAccessModal({
   const [selected, setSelected] = useState<number[]>(() =>
     Array.isArray(group?.inboundIds) ? [...group.inboundIds] : [],
   );
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open || !group) return;
     let cancelled = false;
-    setError('');
-    setLoading(true);
     void fetchInboundOptions()
       .then((rows) => {
         if (!cancelled) setInbounds(rows);
