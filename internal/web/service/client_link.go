@@ -149,7 +149,9 @@ func (s *ClientService) syncInboundClients(tx *gorm.DB, inboundId int, clients [
 		}
 
 		before := *row
+		before.GroupIds = nil
 		applyClientRecordMerge(row, incoming)
+		row.GroupIds = nil
 		preservedUpdatedAt := max(incoming.UpdatedAt, row.UpdatedAt)
 		row.UpdatedAt = preservedUpdatedAt
 

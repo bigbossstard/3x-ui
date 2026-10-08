@@ -84,6 +84,8 @@ func (p *ClientCreatePayload) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Client     json.RawMessage `json:"client"`
 		InboundIds []int           `json:"inboundIds"`
+		AccessMode string          `json:"accessMode"`
+		GroupIds   []int           `json:"groupIds"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err

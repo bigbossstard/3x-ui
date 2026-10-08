@@ -84,7 +84,10 @@ func (s *ClientService) ImportClients(inboundSvc *InboundService, items []Client
 		if mode == model.ClientAccessModeGroups && len(items[i].InboundIds) == 0 && len(items[i].GroupIds) > 0 {
 			resolved, rErr := s.ResolveInboundIdsForGroups(items[i].GroupIds)
 			if rErr != nil {
-				skip(items[i].Client.Email, rErr.Error())
+				result.Skipped = append(result.Skipped, BulkCreateReport{
+					Email:  items[i].Client.Email,
+					Reason: rErr.Error(),
+				})
 				continue
 			}
 			items[i].InboundIds = resolved
