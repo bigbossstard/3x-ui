@@ -236,7 +236,7 @@ func (a *ClientController) update(c *gin.Context) {
 	inboundFilter := parseInboundIdsQuery(c.Query("inboundIds"))
 	needRestart, err := a.clientService.UpdateByEmail(&a.inboundService, email, req.Client, req.LimitHwid, inboundFilter...)
 	if err == nil && (req.AccessMode != "" || req.GroupIds != nil) {
-		finalEmail := strings.TrimSpace(req.Client.Email)
+		finalEmail := strings.TrimSpace(req.Email)
 		if finalEmail == "" {
 			finalEmail = email
 		}
