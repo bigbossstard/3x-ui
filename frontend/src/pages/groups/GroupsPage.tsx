@@ -178,7 +178,7 @@ export default function GroupsPage() {
 
   const clientBelongsToGroup = useCallback(
     (client: ClientRecord, group: GroupSummary) =>
-      client.group === group.name ||
+      (client.accessMode !== 'groups' && client.group === group.name) ||
       (group.id > 0 &&
         client.accessMode === 'groups' &&
         Array.isArray(client.groupIds) &&
