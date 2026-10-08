@@ -138,13 +138,12 @@ func (s *ClientService) SetClientGroupIds(clientID int, groupIDs []int) error {
 	})
 }
 
-func (s *ClientService) GetGroupAccess(name string) (ClientGroupAccess, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ClientGroupAccess{}, errors.New("group name is required")
+func (s *ClientService) GetGroupAccessByID(groupID int) (ClientGroupAccess, error) {
+	if groupID <= 0 {
+		return ClientGroupAccess{}, errors.New("group id is required")
 	}
 	var group model.ClientGroup
-	if err := database.GetDB().Where("name = ?", name).First(&group).Error; err != nil {
+	if err := database.GetDB().First(&group, groupID).Error; err != nil {
 		return ClientGroupAccess{}, err
 	}
 	ids, err := s.GetGroupInboundIds(group.Id)
@@ -282,14 +281,14 @@ func (s *ClientService) ReconcileManagedClient(inboundSvc *InboundService, clien
 	}
 	needRestart := false
 	if len(toAttach) > 0 {
-		nr, err := s.Attach(inboundSvc, clientID, toAttach)
+		nr, err := s.attachInbounds(inboundSvc, clientID, toAttach)
 		needRestart = needRestart || nr
 		if err != nil {
 			return needRestart, err
 		}
 	}
 	if len(toDetach) > 0 {
-		nr, err := s.Detach(inboundSvc, clientID, toDetach)
+		nr, err := s.detachInbounds(inboundSvc, clientID, toDetach)
 		needRestart = needRestart || nr
 		if err != nil {
 			return needRestart, err
@@ -298,21 +297,16 @@ func (s *ClientService) ReconcileManagedClient(inboundSvc *InboundService, clien
 	return needRestart, nil
 }
 
-func (s *ClientService) SetGroupAccessByName(inboundSvc *InboundService, name string, inboundIDs []int) (int, bool, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return 0, false, errors.New("group name is required")
+func (s *ClientService) SetGroupAccessByID(inboundSvc *InboundService, groupID int, inboundIDs []int) (int, bool, error) {
+	if groupID <= 0 {
+		return 0, false, errors.New("group id is required")
 	}
-	var group model.ClientGroup
-	if err := database.GetDB().Where("name = ?", name).First(&group).Error; err != nil {
-		return 0, false, err
-	}
-	if err := s.SetGroupInboundIds(group.Id, inboundIDs); err != nil {
+	if err := s.SetGroupInboundIds(groupID, inboundIDs); err != nil {
 		return 0, false, err
 	}
 	var clientIDs []int
 	if err := database.GetDB().Table("client_group_members").
-		Where("group_id = ?", group.Id).
+		Where("group_id = ?", groupID).
 		Order("client_id ASC").
 		Pluck("client_id", &clientIDs).Error; err != nil {
 		return 0, false, err

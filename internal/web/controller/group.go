@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
@@ -24,8 +25,8 @@ func NewGroupController(g *gin.RouterGroup) *GroupController {
 func (a *GroupController) initRouter(g *gin.RouterGroup) {
 	g.GET("/groups", a.list)
 	g.GET("/groups/:name/emails", a.emails)
-	g.GET("/groups/:name/access", a.access)
-	g.POST("/groups/:name/access", a.setAccess)
+	g.GET("/groups/:id/access", a.access)
+	g.POST("/groups/:id/access", a.setAccess)
 	g.POST("/groups/create", a.create)
 	g.POST("/groups/rename", a.rename)
 	g.POST("/groups/delete", a.delete)
@@ -187,7 +188,12 @@ type groupAccessBody struct {
 }
 
 func (a *GroupController) access(c *gin.Context) {
-	access, err := a.clientService.GetGroupAccess(c.Param("name"))
+	groupID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || groupID <= 0 {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("invalid group id"))
+		return
+	}
+	access, err := a.clientService.GetGroupAccessByID(groupID)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -196,12 +202,17 @@ func (a *GroupController) access(c *gin.Context) {
 }
 
 func (a *GroupController) setAccess(c *gin.Context) {
+	groupID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || groupID <= 0 {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("invalid group id"))
+		return
+	}
 	var body groupAccessBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	affected, needRestart, err := a.clientService.SetGroupAccessByName(&a.inboundService, c.Param("name"), body.InboundIds)
+	affected, needRestart, err := a.clientService.SetGroupAccessByID(&a.inboundService, groupID, body.InboundIds)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return

@@ -184,10 +184,45 @@ func initModels() error {
 	if err := migrateClientEmailLowerIndex(); err != nil {
 		return err
 	}
+	if err := migrateClientAccessData(); err != nil {
+		return err
+	}
 	if IsPostgres() {
 		if err := resyncPostgresSequences(db, models); err != nil {
 			log.Printf("Error resyncing postgres sequences: %v", err)
 			return err
+		}
+	}
+	return nil
+}
+
+func migrateClientAccessData() error {
+	if err := db.Model(&model.ClientRecord{}).
+		Where("access_mode IS NULL OR access_mode = ''").
+		Update("access_mode", model.ClientAccessModeLegacy).Error; err != nil {
+		return err
+	}
+
+	var names []string
+	if err := db.Model(&model.ClientRecord{}).
+		Where("TRIM(group_name) <> ''").
+		Distinct().
+		Pluck("group_name", &names).Error; err != nil {
+		return err
+	}
+	for _, rawName := range names {
+		name := strings.TrimSpace(rawName)
+		if name == "" {
+			continue
+		}
+		var count int64
+		if err := db.Model(&model.ClientGroup{}).Where("name = ?", name).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			if err := db.Create(&model.ClientGroup{Name: name}).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -93,3 +93,30 @@ func TestClientGroupAccessResolution_UsesUnionAndPreservesMembership(t *testing.
         t.Fatalf("empty group set returned %v, want no access", none)
     }
 }
+
+func TestManagedClientCannotUseDirectInboundMutation(t *testing.T) {
+	dbDir := t.TempDir()
+	if err := database.InitDB(filepath.Join(dbDir, "x-ui.db")); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	t.Cleanup(func() { _ = database.CloseDB() })
+
+	client := &model.ClientRecord{
+		Email:      "managed-direct-test@example.com",
+		UUID:       "22222222-2222-2222-2222-222222222222",
+		SubID:      "managed-direct-test-sub",
+		Enable:     true,
+		AccessMode: model.ClientAccessModeGroups,
+	}
+	if err := database.GetDB().Create(client).Error; err != nil {
+		t.Fatalf("create managed client: %v", err)
+	}
+
+	svc := ClientService{}
+	if _, err := svc.Attach(nil, client.Id, []int{1}); err == nil {
+		t.Fatal("managed client was allowed to use direct attach")
+	}
+	if _, err := svc.Detach(nil, client.Id, []int{1}); err == nil {
+		t.Fatal("managed client was allowed to use direct detach")
+	}
+}

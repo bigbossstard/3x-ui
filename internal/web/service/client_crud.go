@@ -1006,9 +1006,20 @@ func addressesFitAmneziaWGInbound(addrs []string, ib *model.Inbound) bool {
 	return true
 }
 
-// Attach applies the client to every requested inbound: one failing inbound no
-// longer aborts the others, so the error can name several and needRestart holds.
+// Attach preserves the original direct-inbound API for legacy clients.
+// Managed clients derive their inbound set from access groups instead.
 func (s *ClientService) Attach(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
+	existing, err := s.GetByID(id)
+	if err != nil {
+		return false, err
+	}
+	if normalizeClientAccessMode(existing.AccessMode, nil) == model.ClientAccessModeGroups {
+		return false, common.NewError("managed client access is controlled by access groups")
+	}
+	return s.attachInbounds(inboundSvc, id, inboundIds)
+}
+
+func (s *ClientService) attachInbounds(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
 	existing, err := s.GetByID(id)
 	if err != nil {
 		return false, err
@@ -1169,6 +1180,17 @@ func (s *ClientService) UpdateByEmail(inboundSvc *InboundService, email string, 
 }
 
 func (s *ClientService) Detach(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
+	existing, err := s.GetByID(id)
+	if err != nil {
+		return false, err
+	}
+	if normalizeClientAccessMode(existing.AccessMode, nil) == model.ClientAccessModeGroups {
+		return false, common.NewError("managed client access is controlled by access groups")
+	}
+	return s.detachInbounds(inboundSvc, id, inboundIds)
+}
+
+func (s *ClientService) detachInbounds(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
 	existing, err := s.GetByID(id)
 	if err != nil {
 		return false, err

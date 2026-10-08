@@ -90,7 +90,7 @@ export default function GroupAccessModal({
     setSaving(true);
     try {
       const msg = await HttpUtil.post(
-        `/panel/api/clients/groups/${encodeURIComponent(group.name)}/access`,
+        `/panel/api/clients/groups/${group.id}/access`,
         { inboundIds: [...new Set(selected)] },
         JSON_HEADERS,
       );
