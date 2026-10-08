@@ -66,6 +66,7 @@ const SubLinksModal = lazy(() => import('../clients/SubLinksModal'));
 const ClientBulkAdjustModal = lazy(() => import('../clients/ClientBulkAdjustModal'));
 const GroupAddClientsModal = lazy(() => import('./GroupAddClientsModal'));
 const GroupRemoveClientsModal = lazy(() => import('./GroupRemoveClientsModal'));
+const GroupAccessModal = lazy(() => import('./GroupAccessModal'));
 
 const JSON_HEADERS = { headers: { 'Content-Type': 'application/json' } } as const;
 
@@ -160,6 +161,7 @@ export default function GroupsPage() {
   const [removeClientsOpen, setRemoveClientsOpen] = useState(false);
   const [groupEmails, setGroupEmails] = useState<string[]>([]);
   const [groupForAction, setGroupForAction] = useState<GroupSummary | null>(null);
+  const [accessGroup, setAccessGroup] = useState<GroupSummary | null>(null);
 
   const allClientsQuery = useQuery<ClientRecord[]>({
     queryKey: keys.clients.all(),
@@ -173,6 +175,16 @@ export default function GroupsPage() {
     staleTime: 30_000,
   });
   const allClients = allClientsQuery.data ?? [];
+
+  const clientBelongsToGroup = useCallback(
+    (client: ClientRecord, group: GroupSummary) =>
+      (client.accessMode !== 'groups' && client.group === group.name) ||
+      (group.id > 0 &&
+        client.accessMode === 'groups' &&
+        Array.isArray(client.groupIds) &&
+        client.groupIds.includes(group.id)),
+    [],
+  );
 
   const totalGroups = groups.length;
   const totalClients = useMemo(
@@ -364,6 +376,13 @@ export default function GroupsPage() {
         label: t('pages.clients.adjustSelected', { count: row.clientCount || 0 }),
         disabled: !row.clientCount,
         onClick: () => openAdjustFor(row),
+      },
+      {
+        key: 'access',
+        icon: <LinkOutlined />,
+        label: t('pages.groups.manageAccess', { defaultValue: 'Управление доступом' }),
+        disabled: !row.id,
+        onClick: () => setAccessGroup(row),
       },
       {
         key: 'reset',
@@ -675,7 +694,9 @@ export default function GroupsPage() {
           <GroupAddClientsModal
             open={addClientsOpen}
             groupName={groupForAction?.name ?? null}
-            candidates={allClients.filter((c) => c.group !== groupForAction?.name)}
+            candidates={allClients.filter(
+              (c) => groupForAction && !clientBelongsToGroup(c, groupForAction),
+            )}
             onClose={() => setAddClientsOpen(false)}
             onSubmit={async (emails) => {
               const msg = await bulkAddToGroup(emails, groupForAction?.name ?? '');
@@ -687,14 +708,31 @@ export default function GroupsPage() {
           />
         </LazyMount>
 
+        <LazyMount when={accessGroup !== null}>
+          <GroupAccessModal
+            key={accessGroup?.id ?? 0}
+            open={accessGroup !== null}
+            group={accessGroup}
+            onOpenChange={(open) => {
+              if (!open) setAccessGroup(null);
+            }}
+            onSaved={() => {
+              setAccessGroup(null);
+              invalidate();
+            }}
+          />
+        </LazyMount>
+
         <LazyMount when={removeClientsOpen}>
           <GroupRemoveClientsModal
             open={removeClientsOpen}
             groupName={groupForAction?.name ?? null}
-            members={allClients.filter((c) => c.group === groupForAction?.name)}
+            members={allClients.filter(
+              (c) => groupForAction && clientBelongsToGroup(c, groupForAction),
+            )}
             onClose={() => setRemoveClientsOpen(false)}
             onSubmit={async (emails) => {
-              const msg = await bulkRemoveFromGroup(emails);
+              const msg = await bulkRemoveFromGroup(emails, groupForAction?.name ?? '');
               if (msg?.success) {
                 return (msg.obj as { affected?: number } | undefined) ?? { affected: 0 };
               }

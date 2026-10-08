@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 
@@ -13,29 +14,54 @@ import (
 )
 
 type GroupSummary struct {
+	Id          int   `json:"id" gorm:"-"`
 	Name        string `json:"name"`
-	ClientCount int    `json:"clientCount"`
-	TrafficUsed int64  `json:"trafficUsed"`
-	Up          int64  `json:"up"`
-	Down        int64  `json:"down"`
+	ClientCount int   `json:"clientCount"`
+	TrafficUsed int64 `json:"trafficUsed"`
+	Up          int64 `json:"up"`
+	Down        int64 `json:"down"`
+	InboundIds  []int `json:"inboundIds,omitempty" gorm:"-"`
 }
 
 func (s *ClientService) ListGroups() ([]GroupSummary, error) {
 	db := database.GetDB()
 	// email is unique in both clients and client_traffics, so the LEFT JOIN
 	// never double-counts a client's traffic.
-	var derived []GroupSummary
+	var legacyDerived []GroupSummary
 	if err := db.Table("clients AS c").
 		Select("c.group_name AS name, COUNT(*) AS client_count, COALESCE(SUM(ct.up + ct.down), 0) AS traffic_used, COALESCE(SUM(ct.up), 0) AS up, COALESCE(SUM(ct.down), 0) AS down").
 		Joins("LEFT JOIN client_traffics ct ON ct.email = c.email").
 		Where("c.group_name <> ''").
+		Where("(c.access_mode IS NULL OR c.access_mode = '' OR c.access_mode = 'legacy')").
 		Group("c.group_name").
-		Scan(&derived).Error; err != nil {
+		Scan(&legacyDerived).Error; err != nil {
+		return nil, err
+	}
+
+	var managedDerived []GroupSummary
+	if err := db.Table("client_group_members AS gm").
+		Select("cg.name AS name, COUNT(DISTINCT c.id) AS client_count, COALESCE(SUM(ct.up + ct.down), 0) AS traffic_used, COALESCE(SUM(ct.up), 0) AS up, COALESCE(SUM(ct.down), 0) AS down").
+		Joins("JOIN client_groups cg ON cg.id = gm.group_id").
+		Joins("JOIN clients c ON c.id = gm.client_id").
+		Joins("LEFT JOIN client_traffics ct ON ct.email = c.email").
+		Where("c.access_mode = 'groups'").
+		Group("cg.id, cg.name").
+		Scan(&managedDerived).Error; err != nil {
 		return nil, err
 	}
 	var stored []model.ClientGroup
 	if err := db.Find(&stored).Error; err != nil {
 		return nil, err
+	}
+	accessByGroup := make(map[int][]int, len(stored))
+	if len(stored) > 0 {
+		var links []model.ClientGroupInbound
+		if err := db.Order("group_id ASC").Order("inbound_id ASC").Find(&links).Error; err != nil {
+			return nil, err
+		}
+		for _, link := range links {
+			accessByGroup[link.GroupId] = append(accessByGroup[link.GroupId], link.InboundId)
+		}
 	}
 	type groupAgg struct {
 		count int
@@ -44,20 +70,36 @@ func (s *ClientService) ListGroups() ([]GroupSummary, error) {
 	}
 	baseUp := make(map[string]int64, len(stored))
 	baseDown := make(map[string]int64, len(stored))
-	merged := make(map[string]groupAgg, len(derived)+len(stored))
+	merged := make(map[string]groupAgg, len(legacyDerived)+len(managedDerived)+len(stored))
 	for _, g := range stored {
 		merged[g.Name] = groupAgg{}
 		baseUp[g.Name] = g.ResetUp
 		baseDown[g.Name] = g.ResetDown
 	}
-	for _, g := range derived {
+	for _, g := range legacyDerived {
 		merged[g.Name] = groupAgg{count: g.ClientCount, up: g.Up, down: g.Down}
+	}
+	for _, g := range managedDerived {
+		current := merged[g.Name]
+		merged[g.Name] = groupAgg{count: current.count + g.ClientCount, up: current.up + g.Up, down: current.down + g.Down}
 	}
 	out := make([]GroupSummary, 0, len(merged))
 	for name, agg := range merged {
 		up := max(agg.up-baseUp[name], 0)
 		down := max(agg.down-baseDown[name], 0)
-		out = append(out, GroupSummary{Name: name, ClientCount: agg.count, TrafficUsed: up + down, Up: up, Down: down})
+		id := 0
+		var inboundIds []int
+		for _, storedGroup := range stored {
+			if storedGroup.Name == name {
+				id = storedGroup.Id
+				inboundIds = accessByGroup[storedGroup.Id]
+				break
+			}
+		}
+		if inboundIds == nil {
+			inboundIds = []int{}
+		}
+		out = append(out, GroupSummary{Id: id, Name: name, ClientCount: agg.count, TrafficUsed: up + down, Up: up, Down: down, InboundIds: inboundIds})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
@@ -122,16 +164,44 @@ func (s *ClientService) EmailsByGroup(name string) ([]string, error) {
 		return []string{}, nil
 	}
 	db := database.GetDB()
-	var emails []string
+	set := make(map[string]string)
+
+	var legacy []model.ClientRecord
 	if err := db.Model(&model.ClientRecord{}).
 		Where("group_name = ?", name).
-		Order("email ASC").
-		Pluck("email", &emails).Error; err != nil {
+		Where("(access_mode IS NULL OR access_mode = '' OR access_mode = 'legacy')").
+		Find(&legacy).Error; err != nil {
 		return nil, err
 	}
-	if emails == nil {
-		emails = []string{}
+	for _, rec := range legacy {
+		if strings.TrimSpace(rec.Email) != "" {
+			set[strings.ToLower(rec.Email)] = rec.Email
+		}
 	}
+
+	var group model.ClientGroup
+	if err := db.Where("name = ?", name).First(&group).Error; err == nil {
+		var managed []model.ClientRecord
+		if err := db.Table("client_group_members AS gm").
+			Joins("JOIN clients c ON c.id = gm.client_id").
+			Where("gm.group_id = ? AND c.access_mode = 'groups'", group.Id).
+			Find(&managed).Error; err != nil {
+			return nil, err
+		}
+		for _, rec := range managed {
+			if strings.TrimSpace(rec.Email) != "" {
+				set[strings.ToLower(rec.Email)] = rec.Email
+			}
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	emails := make([]string, 0, len(set))
+	for _, email := range set {
+		emails = append(emails, email)
+	}
+	sort.Strings(emails)
 	return emails, nil
 }
 
@@ -141,16 +211,21 @@ func (s *ClientService) ResetGroupTraffic(name string) error {
 		return common.NewError("group name is required")
 	}
 	db := database.GetDB()
+	emails, err := s.EmailsByGroup(name)
+	if err != nil {
+		return err
+	}
 	var agg struct {
 		Up   int64
 		Down int64
 	}
-	if err := db.Table("clients AS c").
-		Select("COALESCE(SUM(ct.up), 0) AS up, COALESCE(SUM(ct.down), 0) AS down").
-		Joins("LEFT JOIN client_traffics ct ON ct.email = c.email").
-		Where("c.group_name = ?", name).
-		Scan(&agg).Error; err != nil {
-		return err
+	if len(emails) > 0 {
+		if err := db.Table("client_traffics").
+			Select("COALESCE(SUM(up), 0) AS up, COALESCE(SUM(down), 0) AS down").
+			Where("email IN ?", emails).
+			Scan(&agg).Error; err != nil {
+			return err
+		}
 	}
 	var count int64
 	if err := db.Model(&model.ClientGroup{}).Where("name = ?", name).Count(&count).Error; err != nil {
@@ -199,7 +274,150 @@ func (s *ClientService) DeleteGroup(name string) (int, error) {
 	if name == "" {
 		return 0, common.NewError("group name is required")
 	}
+	var group model.ClientGroup
+	if err := database.GetDB().Where("name = ?", name).First(&group).Error; err == nil {
+		if err := cleanupDeletedGroupAccess(database.GetDB(), group.Id); err != nil {
+			return 0, err
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
 	return s.replaceGroupValue(name, "")
+}
+
+func (s *ClientService) AddToGroupAccessAware(inboundSvc *InboundService, emails []string, group string) (int, bool, error) {
+	group = strings.TrimSpace(group)
+	if group == "" || len(emails) == 0 {
+		return 0, false, nil
+	}
+	db := database.GetDB()
+	var grp model.ClientGroup
+	if err := db.Where("name = ?", group).First(&grp).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := s.CreateGroup(group); err != nil {
+			return 0, false, err
+		}
+		if err := db.Where("name = ?", group).First(&grp).Error; err != nil {
+			return 0, false, err
+		}
+	} else if err != nil {
+		return 0, false, err
+	}
+
+	var records []model.ClientRecord
+	for _, batch := range chunkStrings(emails, sqlInChunk) {
+		var rows []model.ClientRecord
+		if err := db.Where("email IN ?", batch).Find(&rows).Error; err != nil {
+			return 0, false, err
+		}
+		records = append(records, rows...)
+	}
+
+	legacyEmails := make([]string, 0, len(records))
+	managedIDs := make([]int, 0, len(records))
+	managedSeen := make(map[int]struct{})
+	for _, rec := range records {
+		if rec.AccessMode == model.ClientAccessModeGroups {
+			var exists int64
+			if err := db.Model(&model.ClientGroupMember{}).
+				Where("client_id = ? AND group_id = ?", rec.Id, grp.Id).
+				Count(&exists).Error; err != nil {
+				return 0, false, err
+			}
+			if exists == 0 {
+				if err := db.Create(&model.ClientGroupMember{ClientId: rec.Id, GroupId: grp.Id}).Error; err != nil {
+					return 0, false, err
+				}
+			}
+			if _, seen := managedSeen[rec.Id]; !seen {
+				managedSeen[rec.Id] = struct{}{}
+				managedIDs = append(managedIDs, rec.Id)
+			}
+			continue
+		}
+		legacyEmails = append(legacyEmails, rec.Email)
+	}
+
+	affected := 0
+	if len(legacyEmails) > 0 {
+		n, err := s.AddToGroup(legacyEmails, group)
+		if err != nil {
+			return affected, false, err
+		}
+		affected += n
+	}
+
+	needRestart := false
+	for _, clientID := range managedIDs {
+		changed, err := s.ReconcileManagedClient(inboundSvc, clientID)
+		needRestart = needRestart || changed
+		if err != nil {
+			return affected + 1, needRestart, err
+		}
+		affected++
+	}
+	return affected, needRestart, nil
+}
+
+func (s *ClientService) RemoveFromGroupAccessAware(inboundSvc *InboundService, emails []string, group string) (int, bool, error) {
+	group = strings.TrimSpace(group)
+	if group == "" || len(emails) == 0 {
+		return 0, false, nil
+	}
+	db := database.GetDB()
+	var grp model.ClientGroup
+	groupErr := db.Where("name = ?", group).First(&grp).Error
+	if errors.Is(groupErr, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if groupErr != nil {
+		return 0, false, groupErr
+	}
+
+	var records []model.ClientRecord
+	for _, batch := range chunkStrings(emails, sqlInChunk) {
+		var rows []model.ClientRecord
+		if err := db.Where("email IN ?", batch).Find(&rows).Error; err != nil {
+			return 0, false, err
+		}
+		records = append(records, rows...)
+	}
+
+	legacyEmails := make([]string, 0, len(records))
+	managedIDs := make([]int, 0, len(records))
+	for _, rec := range records {
+		if rec.AccessMode == model.ClientAccessModeGroups {
+			res := db.Where("client_id = ? AND group_id = ?", rec.Id, grp.Id).Delete(&model.ClientGroupMember{})
+			if res.Error != nil {
+				return 0, false, res.Error
+			}
+			if res.RowsAffected > 0 {
+				managedIDs = append(managedIDs, rec.Id)
+			}
+			continue
+		}
+		if strings.TrimSpace(rec.Group) == group {
+			legacyEmails = append(legacyEmails, rec.Email)
+		}
+	}
+
+	affected := 0
+	if len(legacyEmails) > 0 {
+		n, err := s.AddToGroup(legacyEmails, "")
+		if err != nil {
+			return affected, false, err
+		}
+		affected += n
+	}
+	needRestart := false
+	for _, clientID := range managedIDs {
+		nr, err := s.ReconcileManagedClient(inboundSvc, clientID)
+		needRestart = needRestart || nr
+		if err != nil {
+			return affected + 1, needRestart, err
+		}
+		affected++
+	}
+	return affected, needRestart, nil
 }
 
 func (s *ClientService) RemoveFromGroup(emails []string) (int, error) {

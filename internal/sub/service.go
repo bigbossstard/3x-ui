@@ -628,6 +628,15 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		WHERE
 			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','amneziawg','mtproto','tuic')
 			AND clients.sub_id = ? AND inbounds.enable = ?
+			AND (
+				clients.access_mode IS NULL OR clients.access_mode = '' OR clients.access_mode = 'legacy'
+				OR EXISTS (
+					SELECT 1
+					FROM client_group_members gm
+					JOIN client_group_inbounds gi ON gi.group_id = gm.group_id
+					WHERE gm.client_id = clients.id AND gi.inbound_id = inbounds.id
+				)
+			)
 	)`, subId, true).Order("sub_sort_index ASC").Order("id ASC").Find(&inbounds).Error
 	if err != nil {
 		return nil, err

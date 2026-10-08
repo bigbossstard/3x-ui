@@ -1675,6 +1675,9 @@
       },
       "ClientRecord": {
         "properties": {
+          "accessMode": {
+            "type": "string"
+          },
           "adTag": {
             "type": "string"
           },
@@ -1709,6 +1712,12 @@
           },
           "group": {
             "type": "string"
+          },
+          "groupIds": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
           },
           "id": {
             "type": "integer"
@@ -1776,6 +1785,7 @@
           }
         },
         "required": [
+          "accessMode",
           "adTag",
           "allowedIPs",
           "auth",

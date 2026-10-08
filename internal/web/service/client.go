@@ -68,6 +68,8 @@ var ErrClientNotInInbound = errors.New("client not found in inbound")
 type ClientCreatePayload struct {
 	Client     model.Client `json:"client"`
 	InboundIds []int        `json:"inboundIds"`
+	AccessMode string       `json:"accessMode,omitempty"`
+	GroupIds   []int        `json:"groupIds,omitempty"`
 	LimitHwid  int          `json:"-"`
 }
 
@@ -82,6 +84,8 @@ func (p *ClientCreatePayload) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Client     json.RawMessage `json:"client"`
 		InboundIds []int           `json:"inboundIds"`
+		AccessMode string          `json:"accessMode"`
+		GroupIds   []int           `json:"groupIds"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -94,6 +98,8 @@ func (p *ClientCreatePayload) UnmarshalJSON(data []byte) error {
 	}
 	p.Client = withHwid.Client
 	p.InboundIds = raw.InboundIds
+	p.AccessMode = raw.AccessMode
+	p.GroupIds = raw.GroupIds
 	p.LimitHwid = withHwid.LimitHwid
 	// Omit enable → true (legacy API); explicit false is preserved (#6478).
 	var keys map[string]json.RawMessage
@@ -109,8 +115,12 @@ func (p ClientCreatePayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		Client     clientPayloadWithHwid `json:"client"`
 		InboundIds []int                 `json:"inboundIds"`
+		AccessMode string                `json:"accessMode,omitempty"`
+		GroupIds   []int                 `json:"groupIds,omitempty"`
 	}{
 		Client:     clientPayloadWithHwid{Client: p.Client, LimitHwid: p.LimitHwid},
 		InboundIds: p.InboundIds,
+		AccessMode: p.AccessMode,
+		GroupIds:   p.GroupIds,
 	})
 }

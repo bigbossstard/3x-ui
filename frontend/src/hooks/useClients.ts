@@ -340,7 +340,7 @@ export function useClients(options: UseClientsOptions = {}) {
   });
 
   const bulkRemoveFromGroupMut = useMutation({
-    mutationFn: (body: { emails: string[] }) =>
+    mutationFn: (body: { emails: string[]; group: string }) =>
       HttpUtil.post('/panel/api/clients/groups/bulkRemove', body, JSON_HEADERS),
     onSuccess: (msg) => {
       if (msg?.success) invalidateAll();
@@ -603,9 +603,9 @@ export function useClients(options: UseClientsOptions = {}) {
     [bulkAddToGroupMut],
   );
   const bulkRemoveFromGroup = useCallback(
-    (emails: string[]) => {
+    (emails: string[], group: string) => {
       if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null);
-      return bulkRemoveFromGroupMut.mutateAsync({ emails });
+      return bulkRemoveFromGroupMut.mutateAsync({ emails, group });
     },
     [bulkRemoveFromGroupMut],
   );

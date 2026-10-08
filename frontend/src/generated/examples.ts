@@ -435,6 +435,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "total": 2000
   },
   "ClientRecord": {
+    "accessMode": "",
     "adTag": "",
     "allowedIPs": "",
     "auth": "",
@@ -446,6 +447,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "flow": "",
     "forwardedPorts": "",
     "group": "",
+    "groupIds": [
+      0
+    ],
     "id": 0,
     "keepAlive": 0,
     "limitHwid": 0,

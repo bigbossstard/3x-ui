@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
@@ -10,8 +11,9 @@ import (
 )
 
 type GroupController struct {
-	clientService service.ClientService
-	xrayService   service.XrayService
+	clientService  service.ClientService
+	inboundService service.InboundService
+	xrayService    service.XrayService
 }
 
 func NewGroupController(g *gin.RouterGroup) *GroupController {
@@ -23,6 +25,8 @@ func NewGroupController(g *gin.RouterGroup) *GroupController {
 func (a *GroupController) initRouter(g *gin.RouterGroup) {
 	g.GET("/groups", a.list)
 	g.GET("/groups/:name/emails", a.emails)
+	g.GET("/groups/access/:id", a.access)
+	g.POST("/groups/access/:id", a.setAccess)
 	g.POST("/groups/create", a.create)
 	g.POST("/groups/rename", a.rename)
 	g.POST("/groups/delete", a.delete)
@@ -99,12 +103,14 @@ func (a *GroupController) delete(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	affected, err := a.clientService.DeleteGroup(body.Name)
+	affected, needRestart, err := a.clientService.DeleteGroupWithAccess(&a.inboundService, body.Name)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	a.xrayService.SetToNeedRestart()
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
 	notifyClientsChanged()
 }
@@ -142,10 +148,13 @@ func (a *GroupController) bulkAdd(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("group name is required"))
 		return
 	}
-	affected, err := a.clientService.AddToGroup(req.Emails, req.Group)
+	affected, needRestart, err := a.clientService.AddToGroupAccessAware(&a.inboundService, req.Emails, req.Group)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
+	}
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
 	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
 	notifyClientsChanged()
@@ -153,6 +162,7 @@ func (a *GroupController) bulkAdd(c *gin.Context) {
 
 type bulkRemoveFromGroupRequest struct {
 	Emails []string `json:"emails"`
+	Group  string   `json:"group"`
 }
 
 func (a *GroupController) bulkRemove(c *gin.Context) {
@@ -161,12 +171,55 @@ func (a *GroupController) bulkRemove(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	affected, err := a.clientService.RemoveFromGroup(req.Emails)
+	affected, needRestart, err := a.clientService.RemoveFromGroupAccessAware(&a.inboundService, req.Emails, req.Group)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
 	jsonObj(c, gin.H{"affected": affected}, nil)
-	a.xrayService.SetToNeedRestart()
+	notifyClientsChanged()
+}
+
+type groupAccessBody struct {
+	InboundIds []int `json:"inboundIds"`
+}
+
+func (a *GroupController) access(c *gin.Context) {
+	groupID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || groupID <= 0 {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("invalid group id"))
+		return
+	}
+	access, err := a.clientService.GetGroupAccessByID(groupID)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, access, nil)
+}
+
+func (a *GroupController) setAccess(c *gin.Context) {
+	groupID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || groupID <= 0 {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("invalid group id"))
+		return
+	}
+	var body groupAccessBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	affected, needRestart, err := a.clientService.SetGroupAccessByID(&a.inboundService, groupID, body.InboundIds)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
+	jsonObj(c, gin.H{"affected": affected}, nil)
 	notifyClientsChanged()
 }

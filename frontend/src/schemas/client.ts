@@ -37,6 +37,8 @@ export const ClientRecordSchema = z
     limitHwid: z.number().optional(),
     tgId: z.union([z.number(), z.string()]).optional(),
     group: z.string().optional(),
+    accessMode: z.enum(['legacy', 'groups']).optional().default('legacy'),
+    groupIds: nullableNumberArray.optional(),
     comment: z.string().optional(),
     enable: z.boolean().optional(),
     reset: z.number().optional(),
@@ -280,6 +282,7 @@ export const ActiveInboundsByNodeSchema = z
   .transform((v) => v ?? {});
 
 export const GroupSummarySchema = z.object({
+  id: z.number().optional().default(0),
   name: z.string(),
   clientCount: z.number(),
   trafficUsed: z
@@ -294,6 +297,7 @@ export const GroupSummarySchema = z.object({
     .number()
     .nullable()
     .transform((v) => v ?? 0),
+  inboundIds: nullableNumberArray.optional(),
 });
 
 export const GroupSummaryListSchema = z
@@ -335,13 +339,31 @@ export const ClientFormSchema = z.object({
   limitHwid: z.number().int().min(0),
   tgId: z.number().int().min(0),
   group: z.string(),
+  accessMode: z.enum(['legacy', 'groups']),
+  groupIds: z.array(z.number()),
   comment: z.string(),
   enable: z.boolean(),
   inboundIds: z.array(z.number()),
 });
 
-export const ClientCreateFormSchema = ClientFormSchema.extend({
-  inboundIds: z.array(z.number()).min(1, 'pages.clients.selectInbound'),
+export const ClientCreateFormSchema = ClientFormSchema.superRefine((value, ctx) => {
+  if (value.accessMode === 'groups') {
+    if (value.groupIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'pages.clients.selectAccessGroup',
+        path: ['groupIds'],
+      });
+    }
+    return;
+  }
+  if (value.inboundIds.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'pages.clients.selectInbound',
+      path: ['inboundIds'],
+    });
+  }
 });
 
 export const ClientBulkAdjustFormSchema = z

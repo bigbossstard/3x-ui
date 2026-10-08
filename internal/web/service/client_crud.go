@@ -147,6 +147,21 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 		return false, err
 	}
 	normalizeClientTrafficReset(&client)
+	payload.GroupIds = uniqueSortedInts(payload.GroupIds)
+	payload.AccessMode = normalizeClientAccessMode(payload.AccessMode, payload.GroupIds)
+	if payload.AccessMode == model.ClientAccessModeGroups {
+		if len(payload.GroupIds) == 0 {
+			return false, common.NewError("at least one access group is required")
+		}
+		resolved, rErr := s.ResolveInboundIdsForGroups(payload.GroupIds)
+		if rErr != nil {
+			return false, rErr
+		}
+		payload.InboundIds = resolved
+		if len(payload.InboundIds) == 0 {
+			return false, common.NewError("selected access groups grant no inbounds")
+		}
+	}
 	if len(payload.InboundIds) == 0 {
 		return false, common.NewError("at least one inbound is required")
 	}
@@ -237,6 +252,15 @@ func (s *ClientService) Create(inboundSvc *InboundService, payload *ClientCreate
 	// A re-created email is a live identity again: a delete tombstone left
 	// standing makes the next node merge prune the new client's inbound links.
 	withdrawClientTombstones(client.Email)
+	rec, recErr := s.GetRecordByEmail(nil, client.Email)
+	if recErr != nil {
+		return needRestart, recErr
+	}
+	accessRestart, accessErr := s.SetClientAccess(inboundSvc, rec.Id, payload.AccessMode, payload.GroupIds)
+	needRestart = needRestart || accessRestart
+	if accessErr != nil {
+		return needRestart, accessErr
+	}
 	return needRestart, s.setClientLimitHwidByEmail(nil, client.Email, payload.LimitHwid)
 }
 
@@ -878,6 +902,9 @@ func (s *ClientService) Delete(inboundSvc *InboundService, id int, keepTraffic b
 		if err := tx.Where("client_id = ?", id).Delete(&model.ClientInbound{}).Error; err != nil {
 			return err
 		}
+		if err := cleanupClientAccessRelations(tx, id); err != nil {
+			return err
+		}
 		if err := tx.Where("client_id = ?", id).Delete(&model.ClientExternalLink{}).Error; err != nil {
 			return err
 		}
@@ -979,9 +1006,20 @@ func addressesFitAmneziaWGInbound(addrs []string, ib *model.Inbound) bool {
 	return true
 }
 
-// Attach applies the client to every requested inbound: one failing inbound no
-// longer aborts the others, so the error can name several and needRestart holds.
+// Attach preserves the original direct-inbound API for legacy clients.
+// Managed clients derive their inbound set from access groups instead.
 func (s *ClientService) Attach(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
+	existing, err := s.GetByID(id)
+	if err != nil {
+		return false, err
+	}
+	if normalizeClientAccessMode(existing.AccessMode, nil) == model.ClientAccessModeGroups {
+		return false, common.NewError("managed client access is controlled by access groups")
+	}
+	return s.attachInbounds(inboundSvc, id, inboundIds)
+}
+
+func (s *ClientService) attachInbounds(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
 	existing, err := s.GetByID(id)
 	if err != nil {
 		return false, err
@@ -1142,6 +1180,17 @@ func (s *ClientService) UpdateByEmail(inboundSvc *InboundService, email string, 
 }
 
 func (s *ClientService) Detach(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
+	existing, err := s.GetByID(id)
+	if err != nil {
+		return false, err
+	}
+	if normalizeClientAccessMode(existing.AccessMode, nil) == model.ClientAccessModeGroups {
+		return false, common.NewError("managed client access is controlled by access groups")
+	}
+	return s.detachInbounds(inboundSvc, id, inboundIds)
+}
+
+func (s *ClientService) detachInbounds(inboundSvc *InboundService, id int, inboundIds []int) (bool, error) {
 	existing, err := s.GetByID(id)
 	if err != nil {
 		return false, err

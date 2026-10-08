@@ -48,7 +48,14 @@ import type {
   ExternalLinkInput,
 } from '@/hooks/useClients';
 import { useFail2banStatusQuery, getLimitIpNotice } from '@/api/queries/useFail2banStatusQuery';
-import { ClientFormSchema, ClientCreateFormSchema, type ClientFormValues } from '@/schemas/client';
+import { parseMsg } from '@/utils/zodValidate';
+import {
+  ClientFormSchema,
+  ClientCreateFormSchema,
+  GroupSummaryListSchema,
+  type ClientFormValues,
+  type GroupSummary,
+} from '@/schemas/client';
 import './ClientFormModal.css';
 
 const FLOW_OPTIONS = Object.values(TLS_FLOW_CONTROL);
@@ -105,6 +112,8 @@ interface SaveMetaCreate {
 interface SaveCreatePayload {
   client: Record<string, unknown>;
   inboundIds: number[];
+  accessMode?: 'legacy' | 'groups';
+  groupIds?: number[];
 }
 
 interface ClientFormModalProps {
@@ -162,6 +171,8 @@ const EMPTY: Values = {
   limitHwid: 0,
   tgId: 0,
   group: '',
+  accessMode: 'legacy',
+  groupIds: [],
   comment: '',
   enable: true,
   inboundIds: [],
@@ -258,6 +269,8 @@ export default function ClientFormModal({
 
   const methods = useForm<Values>({ defaultValues: EMPTY });
   const inboundIds = useWatch({ control: methods.control, name: 'inboundIds' });
+  const accessMode = useWatch({ control: methods.control, name: 'accessMode' });
+  const groupIds = useWatch({ control: methods.control, name: 'groupIds' });
   const delayedStart = useWatch({ control: methods.control, name: 'delayedStart' });
   const expiryDate = useWatch({ control: methods.control, name: 'expiryDate' });
   const enable = useWatch({ control: methods.control, name: 'enable' });
@@ -278,6 +291,10 @@ export default function ClientFormModal({
     append: appendExternalLink,
     remove: removeExternalLink,
   } = useFieldArray({ control: methods.control, name: 'externalLinks' });
+
+  const [accessGroups, setAccessGroups] = useState<GroupSummary[]>([]);
+  const [accessGroupsLoading, setAccessGroupsLoading] = useState(false);
+  const [accessGroupsLoadFailed, setAccessGroupsLoadFailed] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -301,6 +318,32 @@ export default function ClientFormModal({
   const fail2ban = useFail2banStatusQuery();
   const limitIpDisabled = !fail2ban.usable;
   const limitIpNotice = getLimitIpNotice(fail2ban, t);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setAccessGroupsLoading(true);
+    setAccessGroupsLoadFailed(false);
+    void HttpUtil.get('/panel/api/clients/groups', undefined, { silent: true })
+      .then((msg) => {
+        if (cancelled) return;
+        if (!msg?.success) throw new Error(msg?.msg || 'Failed to load access groups');
+        const parsed = parseMsg(msg, GroupSummaryListSchema, 'clients/groups');
+        setAccessGroups(parsed.obj ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAccessGroups([]);
+          setAccessGroupsLoadFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAccessGroupsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   // Declared ahead of the seeding effect below (which needs them to resolve
   // which specific wg/awg inbound this client is attached to, for seeding
@@ -373,6 +416,8 @@ export default function ClientFormModal({
         limitHwid: client.limitHwid || 0,
         tgId: Number(client.tgId) || 0,
         group: client.group || '',
+        accessMode: client.accessMode === 'groups' ? 'groups' : 'legacy',
+        groupIds: Array.isArray(client.groupIds) ? [...client.groupIds] : [],
         comment: client.comment || '',
         enable: !!client.enable,
         inboundIds: Array.isArray(attachedIds) ? [...attachedIds] : [],
@@ -415,6 +460,24 @@ export default function ClientFormModal({
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isEdit]);
+
+  const effectiveGroupInboundIds = useMemo(() => {
+    if (accessMode !== 'groups' || !Array.isArray(groupIds)) return [];
+    const allowed = new Set<number>();
+    for (const group of accessGroups) {
+      if (!groupIds.includes(group.id)) continue;
+      for (const inboundId of group.inboundIds ?? []) allowed.add(inboundId);
+    }
+    return [...allowed].sort((a, b) => a - b);
+  }, [accessGroups, accessMode, groupIds]);
+
+  useEffect(() => {
+    if (accessMode !== 'groups' || !accessGroups.length || accessGroupsLoadFailed) return;
+    const next = effectiveGroupInboundIds;
+    const current = methods.getValues('inboundIds') || [];
+    if (current.length === next.length && current.every((id, index) => id === next[index])) return;
+    methods.setValue('inboundIds', next, { shouldDirty: true });
+  }, [accessMode, accessGroups, accessGroupsLoadFailed, effectiveGroupInboundIds, methods]);
 
   const flowCapableIds = useMemo(() => {
     const ids = new Set<number>();
@@ -673,6 +736,8 @@ export default function ClientFormModal({
       comment: values.comment,
       enable: values.enable,
       inboundIds: values.inboundIds,
+      accessMode: values.accessMode,
+      groupIds: values.groupIds,
     });
     if (!validated.success) {
       const issue = validated.error.issues[0];
@@ -705,6 +770,8 @@ export default function ClientFormModal({
       group: values.group,
       comment: values.comment,
       enable: !!values.enable,
+      accessMode: values.accessMode,
+      groupIds: values.groupIds,
     };
     const reverseTagValue = showReverseTag ? (values.reverseTag || '').trim() : '';
     if (reverseTagValue) {
@@ -776,8 +843,14 @@ export default function ClientFormModal({
       if (isEdit && client) {
         const original = new Set(attachedIds || []);
         const next = new Set(values.inboundIds || []);
-        const toAttach = [...next].filter((id) => !original.has(id));
-        const toDetach = [...original].filter((id) => !next.has(id));
+        const toAttach =
+          values.accessMode === 'groups'
+            ? []
+            : [...next].filter((id) => !original.has(id));
+        const toDetach =
+          values.accessMode === 'groups'
+            ? []
+            : [...original].filter((id) => !next.has(id));
         msg = await save(clientPayload, {
           isEdit: true,
           email: client.email,
@@ -787,7 +860,13 @@ export default function ClientFormModal({
         });
       } else {
         msg = await save(
-          { client: clientPayload, inboundIds: values.inboundIds },
+          {
+            client: clientPayload,
+            inboundIds:
+              values.accessMode === 'groups' ? effectiveGroupInboundIds : values.inboundIds,
+            accessMode: values.accessMode,
+            groupIds: values.groupIds,
+          },
           { isEdit: false, email: clientPayload.email as string, externalLinks },
         );
       }
@@ -1049,19 +1128,72 @@ export default function ClientFormModal({
                         </Col>
                         <Col xs={24} md={12}>
                           <FormField
-                            name="group"
-                            label={t('pages.clients.group')}
-                            tooltip={t('pages.clients.groupDesc')}
-                            transform={{ output: (v) => v ?? '' }}
+                            name="accessMode"
+                            label={t('pages.clients.accessMode', {
+                              defaultValue: 'Источник доступа',
+                            })}
                           >
-                            <AutoComplete
-                              placeholder={t('pages.clients.groupPlaceholder')}
-                              options={groups.map((g) => ({ value: g }))}
-                              allowClear
+                            <Select
+                              options={[
+                                {
+                                  value: 'legacy',
+                                  label: t('pages.clients.accessModeLegacy', {
+                                    defaultValue: 'Прямое назначение inbound',
+                                  }),
+                                },
+                                {
+                                  value: 'groups',
+                                  label: t('pages.clients.accessModeGroups', {
+                                    defaultValue: 'Группы доступа',
+                                  }),
+                                },
+                              ]}
                             />
                           </FormField>
                         </Col>
                       </Row>
+
+                      {accessMode === 'legacy' ? (
+                        <Form.Item
+                          label={t('pages.clients.group', { defaultValue: 'Группа' })}
+                          tooltip={t('pages.clients.groupDesc')}
+                        >
+                          <AutoComplete
+                            value={methods.getValues('group')}
+                            onChange={(value) => methods.setValue('group', value)}
+                            placeholder={t('pages.clients.groupPlaceholder')}
+                            options={groups.map((g) => ({ value: g }))}
+                            allowClear
+                          />
+                        </Form.Item>
+                      ) : (
+                        <FormField
+                          name="groupIds"
+                          label={t('pages.clients.accessGroups', {
+                            defaultValue: 'Группы доступа',
+                          })}
+                          tooltip={t('pages.clients.accessGroupsDesc', {
+                            defaultValue:
+                              'Пользователь получает объединённый доступ ко всем inbound, разрешённым его группами.',
+                          })}
+                        >
+                          <Select
+                            mode="multiple"
+                            loading={accessGroupsLoading}
+                            status={accessGroupsLoadFailed ? 'error' : undefined}
+                            options={accessGroups
+                              .filter((g) => g.id > 0)
+                              .map((g) => ({ value: g.id, label: g.name }))}
+                            placeholder={t('pages.clients.selectAccessGroups', {
+                              defaultValue: 'Выберите группы доступа',
+                            })}
+                            maxTagCount="responsive"
+                            showSearch
+                            optionFilterProp="label"
+                            allowClear
+                          />
+                        </FormField>
+                      )}
 
                       {(tgBotEnable || showReverseTag) && (
                         <Row gutter={16}>
@@ -1091,29 +1223,50 @@ export default function ClientFormModal({
                         </Row>
                       )}
 
-                      <Form.Item label={t('pages.clients.attachedInbounds')} required={!isEdit}>
-                        <SelectAllClearButtons
-                          options={inboundOptions}
-                          value={inboundIds}
-                          onChange={(v) => methods.setValue('inboundIds', v)}
-                        />
-                        <Select
-                          mode="multiple"
-                          value={inboundIds}
-                          onChange={(v) => methods.setValue('inboundIds', v)}
-                          options={inboundOptions}
-                          placeholder={t('pages.clients.selectInbound')}
-                          maxTagCount="responsive"
-                          placement="topLeft"
-                          listHeight={220}
-                          showSearch={{
-                            filterOption: (input, option) =>
-                              ((option?.label as string) || '')
-                                .toLowerCase()
-                                .includes(input.toLowerCase()),
-                          }}
-                        />
-                      </Form.Item>
+                      {accessMode === 'groups' ? (
+                        <Form.Item
+                          label={t('pages.clients.effectiveInbounds', {
+                            defaultValue: 'Эффективные inbound',
+                          })}
+                          help={t('pages.clients.effectiveInboundsDesc', {
+                            defaultValue:
+                              'Список рассчитывается автоматически из выбранных групп доступа. Изменить inbound напрямую здесь нельзя.',
+                          })}
+                          required
+                        >
+                          <Select
+                            mode="multiple"
+                            value={effectiveGroupInboundIds}
+                            options={inboundOptions}
+                            disabled
+                            maxTagCount="responsive"
+                          />
+                        </Form.Item>
+                      ) : (
+                        <Form.Item label={t('pages.clients.attachedInbounds')} required={!isEdit}>
+                          <SelectAllClearButtons
+                            options={inboundOptions}
+                            value={inboundIds}
+                            onChange={(v) => methods.setValue('inboundIds', v)}
+                          />
+                          <Select
+                            mode="multiple"
+                            value={inboundIds}
+                            onChange={(v) => methods.setValue('inboundIds', v)}
+                            options={inboundOptions}
+                            placeholder={t('pages.clients.selectInbound')}
+                            maxTagCount="responsive"
+                            placement="topLeft"
+                            listHeight={220}
+                            showSearch={{
+                              filterOption: (input, option) =>
+                                ((option?.label as string) || '')
+                                  .toLowerCase()
+                                  .includes(input.toLowerCase()),
+                            }}
+                          />
+                        </Form.Item>
+                      )}
 
                       <Form.Item>
                         <Switch
