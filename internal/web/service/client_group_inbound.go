@@ -107,6 +107,7 @@ func (s *ClientGroupInboundService) ValidateInboundAttachments(groupName string,
 	if !restricted {
 		return nil
 	}
+
 	allowed := make(map[int]struct{}, len(allowedIDs))
 	for _, id := range allowedIDs {
 		allowed[id] = struct{}{}
@@ -115,6 +116,29 @@ func (s *ClientGroupInboundService) ValidateInboundAttachments(groupName string,
 		if _, ok := allowed[id]; !ok {
 			return common.NewError("inbound is outside the client's group policy:", id)
 		}
+	}
+	return nil
+}
+
+func (s *ClientGroupInboundService) ValidateGroupTransition(fromGroup, toGroup string) error {
+	fromGroup = strings.TrimSpace(fromGroup)
+	toGroup = strings.TrimSpace(toGroup)
+	if fromGroup == "" || fromGroup == toGroup {
+		return nil
+	}
+	_, sourceRestricted, err := s.RestrictedInboundIDs(fromGroup)
+	if err != nil || !sourceRestricted {
+		return err
+	}
+	if toGroup == "" {
+		return common.NewError("cannot remove a client from a restricted group; move it to another restricted group first")
+	}
+	_, destinationRestricted, err := s.RestrictedInboundIDs(toGroup)
+	if err != nil {
+		return err
+	}
+	if !destinationRestricted {
+		return common.NewError("cannot move a client out of restricted access policy; configure the destination group as restricted first")
 	}
 	return nil
 }

@@ -77,11 +77,9 @@ clients. Provisioning may require protocol-specific credentials (notably WireGua
 MTProto and TUIC), so clients still need to be attached through the normal supported client flow.
 Individual `client_hosts` continue to override group Host selection for compatibility.
 
-Removing a client from its restricted group currently returns it to the legacy ungrouped policy;
-the existing denied inbound links have been detached, but legacy Host selection may widen on
-remaining inbounds. This transition needs an explicit future decision (retain a client-level
-restricted snapshot, or define ungrouped clients as legacy) before treating group removal as a
-security revocation.
+Clients cannot be moved from a restricted group to an ungrouped or legacy group, and a restricted
+group with members cannot be deleted. Move members directly to another restricted group instead;
+the normal update path will detach any inbounds not allowed by the destination policy.
 
 ## Subscription integration
 

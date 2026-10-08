@@ -199,6 +199,19 @@ func (s *ClientService) DeleteGroup(name string) (int, error) {
 	if name == "" {
 		return 0, common.NewError("group name is required")
 	}
+	_, restricted, err := (&ClientGroupInboundService{}).RestrictedInboundIDs(name)
+	if err != nil {
+		return 0, err
+	}
+	if restricted {
+		var count int64
+		if err := database.GetDB().Model(&model.ClientRecord{}).Where("group_name = ?", name).Count(&count).Error; err != nil {
+			return 0, err
+		}
+		if count > 0 {
+			return 0, common.NewError("cannot delete a restricted group while clients still belong to it")
+		}
+	}
 	return s.replaceGroupValue(name, "")
 }
 
@@ -244,8 +257,23 @@ func (s *ClientService) AddToGroup(emails []string, group string) (int, error) {
 	if len(records) == 0 {
 		return 0, nil
 	}
+	policyService := &ClientGroupInboundService{}
+	sourceGroups := make(map[string]struct{})
+	for _, record := range records {
+		sourceGroup := strings.TrimSpace(record.Group)
+		if sourceGroup == "" {
+			continue
+		}
+		if _, seen := sourceGroups[sourceGroup]; seen {
+			continue
+		}
+		sourceGroups[sourceGroup] = struct{}{}
+		if err := policyService.ValidateGroupTransition(sourceGroup, group); err != nil {
+			return 0, err
+		}
+	}
 	if group != "" {
-		allowedInboundIDs, restricted, err := (&ClientGroupInboundService{}).RestrictedInboundIDs(group)
+		allowedInboundIDs, restricted, err := policyService.RestrictedInboundIDs(group)
 		if err != nil {
 			return 0, err
 		}

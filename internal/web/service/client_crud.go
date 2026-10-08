@@ -564,6 +564,9 @@ func (s *ClientService) Update(inboundSvc *InboundService, id int, updated model
 	if err != nil {
 		return false, err
 	}
+	if err := (&ClientGroupInboundService{}).ValidateGroupTransition(existing.Group, updated.Group); err != nil {
+		return false, err
+	}
 	inboundIds, err := s.GetInboundIdsForRecord(id)
 	if err != nil {
 		return false, err
