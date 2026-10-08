@@ -25,8 +25,8 @@ func NewGroupController(g *gin.RouterGroup) *GroupController {
 func (a *GroupController) initRouter(g *gin.RouterGroup) {
 	g.GET("/groups", a.list)
 	g.GET("/groups/:name/emails", a.emails)
-	g.GET("/groups/:id/access", a.access)
-	g.POST("/groups/:id/access", a.setAccess)
+	g.GET("/groups/access/:id", a.access)
+	g.POST("/groups/access/:id", a.setAccess)
 	g.POST("/groups/create", a.create)
 	g.POST("/groups/rename", a.rename)
 	g.POST("/groups/delete", a.delete)

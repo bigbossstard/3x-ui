@@ -217,6 +217,35 @@ func (s *ClientService) syncInboundClients(tx *gorm.DB, inboundId int, clients [
 
 // reconcileInboundLinks writes only the client_inbounds rows that differ. prune
 // also removes links absent from wantedFlow, which only a full sync may do.
+func filterUnauthorizedManagedInboundClients(tx *gorm.DB, inboundID int, clientIDs []int) ([]int, error) {
+	if len(clientIDs) == 0 {
+		return nil, nil
+	}
+	var denied []int
+	err := tx.Table("clients AS c").
+		Where("c.id IN ?", clientIDs).
+		Where("c.access_mode = ?", model.ClientAccessModeGroups).
+		Where("NOT EXISTS (SELECT 1 FROM client_group_members gm JOIN client_group_inbounds gi ON gi.group_id = gm.group_id WHERE gm.client_id = c.id AND gi.inbound_id = ?)", inboundID).
+		Pluck("c.id", &denied).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(denied) == 0 {
+		return clientIDs, nil
+	}
+	deniedSet := make(map[int]struct{}, len(denied))
+	for _, id := range denied {
+		deniedSet[id] = struct{}{}
+	}
+	allowed := make([]int, 0, len(clientIDs)-len(denied))
+	for _, id := range clientIDs {
+		if _, ok := deniedSet[id]; !ok {
+			allowed = append(allowed, id)
+		}
+	}
+	return allowed, nil
+}
+
 func (s *ClientService) reconcileInboundLinks(tx *gorm.DB, inboundId int, wantedFlow map[int]string, wantedIds []int, detachEmails []string, prune bool) error {
 	var current []model.ClientInbound
 	if prune {
@@ -264,6 +293,12 @@ func (s *ClientService) reconcileInboundLinks(tx *gorm.DB, inboundId int, wanted
 			}
 		}
 	}
+
+	allowedWantedIds, err := filterUnauthorizedManagedInboundClients(tx, inboundId, wantedIds)
+	if err != nil {
+		return err
+	}
+	wantedIds = allowedWantedIds
 
 	toInsert := make([]model.ClientInbound, 0, len(wantedIds))
 	for _, id := range wantedIds {

@@ -862,7 +862,8 @@ export default function ClientFormModal({
         msg = await save(
           {
             client: clientPayload,
-            inboundIds: values.accessMode === 'groups' ? effectiveGroupInboundIds : values.inboundIds,
+            inboundIds:
+              values.accessMode === 'groups' ? effectiveGroupInboundIds : values.inboundIds,
             accessMode: values.accessMode,
             groupIds: values.groupIds,
           },
@@ -1128,7 +1129,9 @@ export default function ClientFormModal({
                         <Col xs={24} md={12}>
                           <FormField
                             name="accessMode"
-                            label={t('pages.clients.accessMode', { defaultValue: 'Источник доступа' })}
+                            label={t('pages.clients.accessMode', {
+                              defaultValue: 'Источник доступа',
+                            })}
                           >
                             <Select
                               options={[
@@ -1166,7 +1169,9 @@ export default function ClientFormModal({
                       ) : (
                         <FormField
                           name="groupIds"
-                          label={t('pages.clients.accessGroups', { defaultValue: 'Группы доступа' })}
+                          label={t('pages.clients.accessGroups', {
+                            defaultValue: 'Группы доступа',
+                          })}
                           tooltip={t('pages.clients.accessGroupsDesc', {
                             defaultValue:
                               'Пользователь получает объединённый доступ ко всем inbound, разрешённым его группами.',

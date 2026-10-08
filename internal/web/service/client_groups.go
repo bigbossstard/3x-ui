@@ -14,13 +14,13 @@ import (
 )
 
 type GroupSummary struct {
-	Id          int   `json:"id"`
+	Id          int   `json:"id" gorm:"-"`
 	Name        string `json:"name"`
 	ClientCount int   `json:"clientCount"`
 	TrafficUsed int64 `json:"trafficUsed"`
 	Up          int64 `json:"up"`
 	Down        int64 `json:"down"`
-	InboundIds  []int `json:"inboundIds,omitempty"`
+	InboundIds  []int `json:"inboundIds,omitempty" gorm:"-"`
 }
 
 func (s *ClientService) ListGroups() ([]GroupSummary, error) {

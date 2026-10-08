@@ -1649,6 +1649,9 @@ export const SCHEMAS: Record<string, unknown> = {
   },
   "ClientRecord": {
     "properties": {
+      "accessMode": {
+        "type": "string"
+      },
       "adTag": {
         "type": "string"
       },
@@ -1683,6 +1686,12 @@ export const SCHEMAS: Record<string, unknown> = {
       },
       "group": {
         "type": "string"
+      },
+      "groupIds": {
+        "items": {
+          "type": "integer"
+        },
+        "type": "array"
       },
       "id": {
         "type": "integer"
@@ -1750,6 +1759,7 @@ export const SCHEMAS: Record<string, unknown> = {
       }
     },
     "required": [
+      "accessMode",
       "adTag",
       "allowedIPs",
       "auth",

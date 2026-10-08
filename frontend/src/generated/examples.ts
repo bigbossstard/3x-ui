@@ -359,9 +359,6 @@ export const EXAMPLES: Record<string, unknown> = {
     "flow": "",
     "forwardedPorts": "",
     "group": "",
-    "groupIds": [
-      0
-    ],
     "id": "",
     "keepAlive": null,
     "limitIp": 0,
@@ -450,6 +447,9 @@ export const EXAMPLES: Record<string, unknown> = {
     "flow": "",
     "forwardedPorts": "",
     "group": "",
+    "groupIds": [
+      0
+    ],
     "id": 0,
     "keepAlive": 0,
     "limitHwid": 0,

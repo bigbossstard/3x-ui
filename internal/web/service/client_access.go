@@ -70,14 +70,32 @@ func (s *ClientService) validateInboundIds(tx *gorm.DB, inboundIDs []int) error 
 	if len(inboundIDs) == 0 {
 		return nil
 	}
-	var count int64
-	if err := tx.Model(&model.Inbound{}).Where("id IN ?", inboundIDs).Count(&count).Error; err != nil {
+	var rows []model.Inbound
+	if err := tx.Model(&model.Inbound{}).
+		Select("id", "protocol").
+		Where("id IN ?", inboundIDs).
+		Find(&rows).Error; err != nil {
 		return err
 	}
-	if int(count) != len(inboundIDs) {
+	if len(rows) != len(inboundIDs) {
 		return errors.New("one or more inbounds do not exist")
 	}
+	for _, inbound := range rows {
+		if !supportsClientInboundProtocol(inbound.Protocol) {
+			return errors.New("one or more selected inbounds do not support clients")
+		}
+	}
 	return nil
+}
+
+func supportsClientInboundProtocol(protocol model.Protocol) bool {
+	switch protocol {
+	case model.VMESS, model.VLESS, model.Trojan, model.Shadowsocks,
+		model.WireGuard, model.Hysteria, model.MTProto, model.AmneziaWG, model.TUIC:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *ClientService) ResolveInboundIdsForGroups(groupIDs []int) ([]int, error) {
@@ -353,6 +371,13 @@ func (s *ClientService) DeleteGroupWithAccess(inboundSvc *InboundService, name s
 		}
 	}
 	return affected, needRestart, nil
+}
+
+func cleanupDeletedInboundAccess(tx *gorm.DB, inboundID int) error {
+	if inboundID <= 0 {
+		return nil
+	}
+	return tx.Where("inbound_id = ?", inboundID).Delete(&model.ClientGroupInbound{}).Error
 }
 
 func cleanupClientAccessRelations(tx *gorm.DB, clientID int) error {

@@ -98,7 +98,9 @@ export default function GroupAccessModal({
         messageApi.error(msg?.msg || t('somethingWentWrong'));
         return;
       }
-      messageApi.success(t('pages.groups.accessSaved', { defaultValue: 'Доступ группы сохранён' }));
+      messageApi.success(
+        t('pages.groups.accessSaved', { defaultValue: 'Доступ группы сохранён' }),
+      );
       onSaved();
       onOpenChange(false);
     } finally {
