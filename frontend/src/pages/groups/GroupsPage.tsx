@@ -66,6 +66,7 @@ const SubLinksModal = lazy(() => import('../clients/SubLinksModal'));
 const ClientBulkAdjustModal = lazy(() => import('../clients/ClientBulkAdjustModal'));
 const GroupAddClientsModal = lazy(() => import('./GroupAddClientsModal'));
 const GroupRemoveClientsModal = lazy(() => import('./GroupRemoveClientsModal'));
+const GroupAccessModal = lazy(() => import('./GroupAccessModal'));
 
 const JSON_HEADERS = { headers: { 'Content-Type': 'application/json' } } as const;
 
@@ -160,6 +161,7 @@ export default function GroupsPage() {
   const [removeClientsOpen, setRemoveClientsOpen] = useState(false);
   const [groupEmails, setGroupEmails] = useState<string[]>([]);
   const [groupForAction, setGroupForAction] = useState<GroupSummary | null>(null);
+  const [accessGroup, setAccessGroup] = useState<GroupSummary | null>(null);
 
   const allClientsQuery = useQuery<ClientRecord[]>({
     queryKey: keys.clients.all(),
@@ -364,6 +366,13 @@ export default function GroupsPage() {
         label: t('pages.clients.adjustSelected', { count: row.clientCount || 0 }),
         disabled: !row.clientCount,
         onClick: () => openAdjustFor(row),
+      },
+      {
+        key: 'access',
+        icon: <LinkOutlined />,
+        label: t('pages.groups.manageAccess', { defaultValue: 'Управление доступом' }),
+        disabled: !row.id,
+        onClick: () => setAccessGroup(row),
       },
       {
         key: 'reset',
@@ -683,6 +692,20 @@ export default function GroupsPage() {
                 return (msg.obj as { affected?: number } | undefined) ?? { affected: 0 };
               }
               return null;
+            }}
+          />
+        </LazyMount>
+
+        <LazyMount when={accessGroup !== null}>
+          <GroupAccessModal
+            open={accessGroup !== null}
+            group={accessGroup}
+            onOpenChange={(open) => {
+              if (!open) setAccessGroup(null);
+            }}
+            onSaved={() => {
+              setAccessGroup(null);
+              invalidate();
             }}
           />
         </LazyMount>
