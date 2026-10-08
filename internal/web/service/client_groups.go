@@ -96,7 +96,9 @@ func (s *ClientService) ListGroups() ([]GroupSummary, error) {
 				break
 			}
 		}
-		if inboundIds == nil { inboundIds = []int{} }
+		if inboundIds == nil {
+			inboundIds = []int{}
+		}
 		out = append(out, GroupSummary{Id: id, Name: name, ClientCount: agg.count, TrafficUsed: up + down, Up: up, Down: down, InboundIds: inboundIds})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -274,7 +276,9 @@ func (s *ClientService) DeleteGroup(name string) (int, error) {
 	}
 	var group model.ClientGroup
 	if err := database.GetDB().Where("name = ?", name).First(&group).Error; err == nil {
-		if err := cleanupDeletedGroupAccess(database.GetDB(), group.Id); err != nil { return 0, err }
+		if err := cleanupDeletedGroupAccess(database.GetDB(), group.Id); err != nil {
+			return 0, err
+		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, err
 	}
