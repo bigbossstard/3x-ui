@@ -45,7 +45,9 @@ export default function GroupAccessModal({
   const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [inbounds, setInbounds] = useState<InboundOption[]>([]);
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<number[]>(() =>
+    Array.isArray(group?.inboundIds) ? [...group.inboundIds] : [],
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -53,7 +55,6 @@ export default function GroupAccessModal({
   useEffect(() => {
     if (!open || !group) return;
     let cancelled = false;
-    setSelected(Array.isArray(group.inboundIds) ? [...group.inboundIds] : []);
     setError('');
     setLoading(true);
     void fetchInboundOptions()

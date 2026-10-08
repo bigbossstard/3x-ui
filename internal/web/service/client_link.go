@@ -1,6 +1,7 @@
 package service
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -149,15 +150,13 @@ func (s *ClientService) syncInboundClients(tx *gorm.DB, inboundId int, clients [
 		}
 
 		before := *row
-		before.GroupIds = nil
 		applyClientRecordMerge(row, incoming)
-		row.GroupIds = nil
 		preservedUpdatedAt := max(incoming.UpdatedAt, row.UpdatedAt)
 		row.UpdatedAt = preservedUpdatedAt
 
 		idByEmail[email] = row.Id
 
-		if *row == before {
+		if reflect.DeepEqual(*row, before) {
 			continue
 		}
 		if err := tx.Save(row).Error; err != nil {

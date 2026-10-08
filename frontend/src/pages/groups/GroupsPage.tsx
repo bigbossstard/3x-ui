@@ -710,6 +710,7 @@ export default function GroupsPage() {
 
         <LazyMount when={accessGroup !== null}>
           <GroupAccessModal
+            key={accessGroup?.id ?? 0}
             open={accessGroup !== null}
             group={accessGroup}
             onOpenChange={(open) => {
