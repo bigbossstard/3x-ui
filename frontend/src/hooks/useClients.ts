@@ -603,9 +603,9 @@ export function useClients(options: UseClientsOptions = {}) {
     [bulkAddToGroupMut],
   );
   const bulkRemoveFromGroup = useCallback(
-    (emails: string[]) => {
+    (emails: string[], group: string) => {
       if (!Array.isArray(emails) || emails.length === 0) return Promise.resolve(null);
-      return bulkRemoveFromGroupMut.mutateAsync({ emails });
+      return bulkRemoveFromGroupMut.mutateAsync({ emails, group });
     },
     [bulkRemoveFromGroupMut],
   );
