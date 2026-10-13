@@ -141,10 +141,13 @@ func (s *SubJsonService) GetJson(subId string, host string, alwaysReturnArray bo
 		if len(clients) == 0 {
 			continue
 		}
-		subReq.projectThroughFallbackMaster(inbound)
-		if hostEps := subReq.hostEndpoints(inbound, "json"); len(hostEps) > 0 {
-			injectExternalProxy(inbound, hostEps)
+		if inbound.ExcludeFromSub {
+			if countHiddenClients(clients, seenEmails) {
+				hasEnabledClient = true
+			}
+			continue
 		}
+		subReq.projectThroughFallbackMaster(inbound)
 
 		var inboundConfigs []json_util.RawMessage
 		for _, client := range clients {
@@ -152,7 +155,15 @@ func (s *SubJsonService) GetJson(subId string, host string, alwaysReturnArray bo
 				hasEnabledClient = true
 			}
 			seenEmails[client.Email] = struct{}{}
-			inboundConfigs = append(inboundConfigs, s.getConfig(subReq, inbound, client, host)...)
+			hostEps, restricted := subReq.hostEndpointsForClient(inbound, "json", client.Email)
+			if restricted && len(hostEps) == 0 {
+				continue
+			}
+			workingInbound := *inbound
+			if len(hostEps) > 0 {
+				injectExternalProxy(&workingInbound, hostEps)
+			}
+			inboundConfigs = append(inboundConfigs, s.getConfig(subReq, &workingInbound, client, host)...)
 		}
 		if len(inboundConfigs) > 0 {
 			entries = append(entries, subConfigEntry{
@@ -630,6 +641,9 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 			applyExternalProxyTLSToStream(extPrxy, newStream, security)
 		}
 		applyHostStreamOverrides(extPrxy, newStream)
+		if finalmask, ok := newStream["finalmask"].(map[string]any); ok {
+			newStream["finalmask"] = withLegacyFragmentRanges(finalmask)
+		}
 		streamSettings, _ := json.MarshalIndent(newStream, "", "  ")
 		hostMux := hostMuxOverride(extPrxy)
 

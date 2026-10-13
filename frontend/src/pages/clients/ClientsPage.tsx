@@ -60,6 +60,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useClients } from '@/hooks/useClients';
 import { useNodesQuery } from '@/api/queries/useNodesQuery';
+import { useHostsQuery } from '@/api/queries/useHostsQuery';
 import { useDatepicker } from '@/hooks/useDatepicker';
 import type {
   ClientRecord,
@@ -91,7 +92,7 @@ const BulkAttachInboundsModal = lazy(() => import('./BulkAttachInboundsModal'));
 const BulkDetachInboundsModal = lazy(() => import('./BulkDetachInboundsModal'));
 const TextModal = lazy(() => import('@/components/feedback/TextModal'));
 const PromptModal = lazy(() => import('@/components/feedback/PromptModal'));
-import { ClientInboundChips, ClientRowActions } from './RowCells';
+import { ClientHostChips, ClientInboundChips, ClientRowActions } from './RowCells';
 import { emptyFilters, activeFilterCount } from './filters';
 import type { ClientFilters } from './filters';
 import './ClientsPage.css';
@@ -218,6 +219,7 @@ const INBOUND_CHIP_LIMIT = 1;
 // A shared empty array keeps the memoised chip cell from seeing a fresh prop for
 // every unattached client on every render.
 const EMPTY_INBOUND_IDS: number[] = [];
+const EMPTY_HOST_GROUP_IDS: string[] = [];
 
 function readFilterState(): PersistedFilterState {
   try {
@@ -381,12 +383,22 @@ export default function ClientsPage() {
   // Node list for the Nodes filter; the section only renders when the panel
   // actually manages nodes (#4997).
   const { nodes } = useNodesQuery();
+  // Tunnel configs advertise these Hosts, so an empty list must mean "no hosts"
+  // and not "not loaded yet" — the page gate waits for it.
+  const {
+    hosts,
+    fetched: hostsFetched,
+    fetchError: hostsFetchError,
+    refetch: refetchHosts,
+  } = useHostsQuery();
+  const hostsError = hosts.length > 0 ? '' : hostsFetchError;
 
   const [togglingEmail, setTogglingEmail] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'add' | 'edit'>('add');
   const [editingClient, setEditingClient] = useState<ClientRecord | null>(null);
   const [editingAttachedIds, setEditingAttachedIds] = useState<number[]>([]);
+  const [editingHostGroupIds, setEditingHostGroupIds] = useState<string[]>([]);
   const [editingExternalLinks, setEditingExternalLinks] = useState<ExternalLink[]>([]);
   const [editingTunnelAllowedIPs, setEditingTunnelAllowedIPs] = useState<Record<number, string>>(
     {},
@@ -553,6 +565,29 @@ export default function ClientsPage() {
     return out;
   }, [inbounds]);
 
+  const hostsByGroupId = useMemo(() => {
+    const out: Record<string, (typeof hosts)[number]> = {};
+    for (const host of hosts) {
+      if (!host.groupId) continue;
+      const existing = out[host.groupId];
+      if (!existing) {
+        out[host.groupId] = {
+          ...host,
+          inboundIds: [...(host.inboundIds || [])],
+          hosts: [...(host.hosts || [])],
+        };
+        continue;
+      }
+      out[host.groupId] = {
+        ...existing,
+        remark: existing.remark || host.remark,
+        inboundIds: [...new Set([...(existing.inboundIds || []), ...(host.inboundIds || [])])],
+        hosts: [...new Set([...(existing.hosts || []), ...(host.hosts || [])])],
+      };
+    }
+    return out;
+  }, [hosts]);
+
   const protocolOptions = useMemo(() => {
     const values = new Set<string>(
       (inbounds || []).map((i) => i.protocol).filter((x): x is string => !!x),
@@ -677,6 +712,7 @@ export default function ClientsPage() {
     setFormMode('add');
     setEditingClient(null);
     setEditingAttachedIds([]);
+    setEditingHostGroupIds([]);
     setEditingExternalLinks([]);
     setEditingTunnelAllowedIPs({});
     setFormOpen(true);
@@ -694,6 +730,7 @@ export default function ClientsPage() {
       setEditingClient(merged);
       const ids = full?.inboundIds ?? (Array.isArray(row.inboundIds) ? row.inboundIds : []);
       setEditingAttachedIds([...ids]);
+      setEditingHostGroupIds([...(full?.hostGroupIds ?? [])]);
       setEditingExternalLinks(Array.isArray(full?.externalLinks) ? [...full.externalLinks] : []);
       setEditingTunnelAllowedIPs(full?.tunnelAllowedIPs ?? {});
       setFormOpen(true);
@@ -769,11 +806,11 @@ export default function ClientsPage() {
   const onRefreshClick = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refresh();
+      await Promise.all([refresh(), refetchHosts()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refresh]);
+  }, [refresh, refetchHosts]);
 
   const openText = useCallback((opts: { title: string; content: string; fileName?: string }) => {
     setTextTitle(opts.title);
@@ -992,19 +1029,31 @@ export default function ClientsPage() {
 
   const onSave = useCallback(
     async (
-      payload: Record<string, unknown> | { client: Record<string, unknown>; inboundIds: number[] },
+      payload:
+        | Record<string, unknown>
+        | { client: Record<string, unknown>; inboundIds: number[]; hostGroupIds?: string[] },
       meta:
-        | { isEdit: false; email: string; externalLinks: ExternalLinkInput[] }
+        | {
+            isEdit: false;
+            email: string;
+            externalLinks: ExternalLinkInput[];
+            hostGroupIds: string[];
+          }
         | {
             isEdit: true;
             email: string;
             attach: number[];
             detach: number[];
             externalLinks: ExternalLinkInput[];
+            hostGroupIds: string[];
           },
     ) => {
       if (!meta.isEdit) {
-        const createMsg = await create(payload);
+        const createPayload =
+          payload && typeof payload === 'object' && 'client' in payload
+            ? { ...payload, hostGroupIds: meta.hostGroupIds }
+            : payload;
+        const createMsg = await create(createPayload);
         if (!createMsg?.success) return createMsg;
         if (meta.email && meta.externalLinks.length > 0) {
           const r = await setExternalLinks(meta.email, meta.externalLinks);
@@ -1012,7 +1061,11 @@ export default function ClientsPage() {
         }
         return createMsg;
       }
-      const updateMsg = await update(meta.email, payload);
+      const updatePayload = {
+        ...(payload as Record<string, unknown>),
+        hostGroupIds: meta.hostGroupIds,
+      };
+      const updateMsg = await update(meta.email, updatePayload);
       if (!updateMsg?.success) return updateMsg;
       const rawEmail = (payload as { email?: unknown }).email;
       const emailKey =
@@ -1162,6 +1215,19 @@ export default function ClientsPage() {
         },
       },
       {
+        title: t('pages.clients.attachedHosts'),
+        key: 'hostGroupIds',
+        width: 230,
+        render: (_v, record) => (
+          <ClientHostChips
+            groupIds={record.hostGroupIds || EMPTY_HOST_GROUP_IDS}
+            hostsByGroupId={hostsByGroupId}
+            inboundsById={inboundsById}
+            chipLimit={2}
+          />
+        ),
+      },
+      {
         title: t('pages.clients.traffic'),
         key: 'traffic',
         width: 300,
@@ -1223,6 +1289,7 @@ export default function ClientsPage() {
       datepicker,
       trafficDiff,
       clientSpeed,
+      hostsByGroupId,
     ],
   );
 
@@ -1289,14 +1356,19 @@ export default function ClientsPage() {
 
         <Layout className="content-shell">
           <Layout.Content id="content-layout" className="content-area">
-            <Spin spinning={!fetched} delay={200} description={t('loading')} size="large">
-              {!fetched ? (
+            <Spin
+              spinning={!fetched || !hostsFetched}
+              delay={200}
+              description={t('loading')}
+              size="large"
+            >
+              {!fetched || !hostsFetched ? (
                 <div className="loading-spacer" />
-              ) : fetchError ? (
+              ) : fetchError || hostsError ? (
                 <Result
                   status="error"
                   title={t('somethingWentWrong')}
-                  subTitle={fetchError}
+                  subTitle={fetchError || hostsError}
                   extra={
                     <Button type="primary" loading={refreshing} onClick={onRefreshClick}>
                       {t('refresh')}
@@ -1843,6 +1915,14 @@ export default function ClientsPage() {
                                     </div>
                                   </div>
                                   <ClientCardComment comment={row.comment} />
+                                  <div style={{ marginTop: 4 }}>
+                                    <ClientHostChips
+                                      groupIds={row.hostGroupIds || EMPTY_HOST_GROUP_IDS}
+                                      hostsByGroupId={hostsByGroupId}
+                                      inboundsById={inboundsById}
+                                      chipLimit={2}
+                                    />
+                                  </div>
                                   <ClientTrafficCell
                                     compact
                                     up={row.traffic?.up}
@@ -1881,6 +1961,8 @@ export default function ClientsPage() {
             client={editingClient}
             attachedIds={editingAttachedIds}
             attachedExternalLinks={editingExternalLinks}
+            attachedHostGroupIds={editingHostGroupIds}
+            hosts={hosts}
             tunnelAllowedIPs={editingTunnelAllowedIPs}
             inbounds={inbounds}
             tgBotEnable={tgBotEnable}
@@ -1898,6 +1980,7 @@ export default function ClientsPage() {
             tunnelAllowedIPs={viewingTunnelAllowedIPs}
             isOnline={infoClient ? isOnline(infoClient.email) : false}
             subSettings={subSettings}
+            hosts={hosts}
             onOpenChange={setInfoOpen}
           />
         </LazyMount>
@@ -1908,6 +1991,7 @@ export default function ClientsPage() {
             inboundsById={inboundsById}
             tunnelAllowedIPs={viewingTunnelAllowedIPs}
             subSettings={subSettings}
+            hosts={hosts}
             onOpenChange={setQrOpen}
           />
         </LazyMount>

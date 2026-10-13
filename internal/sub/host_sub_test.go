@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/database/dbtest"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
@@ -15,10 +17,7 @@ func seedSubDB(t *testing.T) {
 	t.Helper()
 	dbDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", dbDir)
-	if err := database.InitDB(filepath.Join(dbDir, "x-ui.db")); err != nil {
-		t.Fatalf("InitDB: %v", err)
-	}
-	t.Cleanup(func() { _ = database.CloseDB() })
+	dbtest.InitDB(t, filepath.Join(dbDir, "x-ui.db"))
 }
 
 // seedSubInbound creates a VLESS inbound with one client wired into the
@@ -310,19 +309,107 @@ func TestSub_HostFinalMask_RawLink(t *testing.T) {
 	seedSubDB(t)
 	ib := seedSubInbound(t, "s1", "fmh", 4455, 1,
 		`{"network":"tcp","security":"tls","tlsSettings":{"serverName":"base.sni"},"finalmask":{"tcp":[{"type":"sudoku"}]}}`)
+	finalMask := `{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":["5-10","10-15","15-20","20-25","25-30"],"delays":["10-20","5-20","5-25","15-25","10-30"],"maxSplit":"10-15"}}]}`
 	seedHost(t, &model.Host{
 		InboundId: ib.Id, SortOrder: 0, Remark: "FM", Address: "fm.cdn.com", Port: 8443, Security: "tls",
-		FinalMask: `{"tcp":[{"type":"fragment"}]}`,
+		FinalMask: finalMask,
 	})
 
 	links, _, _, _, err := NewSubService("").GetSubs("s1", "req.example.com")
 	if err != nil {
 		t.Fatalf("GetSubs: %v", err)
 	}
-	joined := strings.Join(links, "\n")
-	wantFm := "fm=" + url.QueryEscape(`{"tcp":[{"type":"sudoku"},{"type":"fragment"}]}`)
-	if !strings.Contains(joined, wantFm) {
-		t.Fatalf("raw link should merge the host Final Mask into fm.\n got: %s\nwant substring: %s", joined, wantFm)
+	if len(links) == 0 {
+		t.Fatal("GetSubs returned no links")
+	}
+	link, err := url.Parse(strings.Split(links[0], "\n")[0])
+	if err != nil {
+		t.Fatalf("parse raw link: %v", err)
+	}
+	var finalmask map[string]any
+	if err := json.Unmarshal([]byte(link.Query().Get("fm")), &finalmask); err != nil {
+		t.Fatalf("unmarshal fm query param: %v", err)
+	}
+	tcp, _ := finalmask["tcp"].([]any)
+	if len(tcp) != 2 {
+		t.Fatalf("tcp mask count = %d, want existing + host mask: %#v", len(tcp), finalmask)
+	}
+	fragment, _ := tcp[1].(map[string]any)
+	settings, _ := fragment["settings"].(map[string]any)
+	if settings["length"] != "25-30" || settings["delay"] != "10-30" {
+		t.Fatalf("legacy ranges = (%v, %v), want last per-segment values", settings["length"], settings["delay"])
+	}
+	if len(settings["lengths"].([]any)) != 5 || len(settings["delays"].([]any)) != 5 {
+		t.Fatalf("per-segment ranges changed: %#v", settings)
+	}
+}
+
+func TestSub_HostFinalMaskJSONAddsLegacyFragmentRanges(t *testing.T) {
+	seedSubDB(t)
+	baseStream := `{"network":"tcp","security":"tls","tlsSettings":{"serverName":"base.sni"},"finalmask":{"tcp":[{"type":"sudoku","settings":{"password":"p"}}]}}`
+	ib := seedSubInbound(t, "s1", "fmj", 4456, 1, baseStream)
+	finalMask := `{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":["5-10","10-15","15-20","20-25","25-30"],"delays":["10-20","5-20","5-25","15-25","10-30"],"maxSplit":"10-15"}}]}`
+	host := seedHost(t, &model.Host{
+		InboundId: ib.Id, SortOrder: 0, Remark: "FM", Address: "fm-json.cdn.com", Port: 8444, Security: "tls",
+		FinalMask: finalMask,
+	})
+
+	globalFinalMask := `{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":["31-40"],"delays":[]}}]}`
+	out, _, err := NewSubJsonService("", "", globalFinalMask, "", NewSubService("")).GetJson("s1", "req.example.com", false)
+	if err != nil {
+		t.Fatalf("GetJson: %v", err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(out), &config); err != nil {
+		t.Fatalf("unmarshal JSON subscription: %v", err)
+	}
+	outbounds, _ := config["outbounds"].([]any)
+	if len(outbounds) == 0 {
+		t.Fatalf("JSON subscription has no outbounds: %s", out)
+	}
+	outbound, _ := outbounds[0].(map[string]any)
+	stream, _ := outbound["streamSettings"].(map[string]any)
+	finalmask, _ := stream["finalmask"].(map[string]any)
+	tcp, _ := finalmask["tcp"].([]any)
+	if len(tcp) != 3 {
+		t.Fatalf("tcp mask count = %d, want base + global + host masks: %#v", len(tcp), finalmask)
+	}
+	globalFragment, _ := tcp[1].(map[string]any)
+	globalSettings, _ := globalFragment["settings"].(map[string]any)
+	if globalSettings["length"] != "31-40" {
+		t.Fatalf("global legacy length = %v, want 31-40", globalSettings["length"])
+	}
+	if _, exists := globalSettings["delay"]; exists {
+		t.Fatalf("empty global delays must not emit a fallback: %#v", globalSettings)
+	}
+	fragment, _ := tcp[2].(map[string]any)
+	settings, _ := fragment["settings"].(map[string]any)
+	if settings["length"] != "25-30" || settings["delay"] != "10-30" {
+		t.Fatalf("legacy ranges = (%v, %v), want the final per-segment ranges", settings["length"], settings["delay"])
+	}
+	if got := settings["lengths"].([]any); len(got) != 5 || got[4] != "25-30" {
+		t.Fatalf("per-segment lengths changed: %#v", settings["lengths"])
+	}
+	if got := settings["delays"].([]any); len(got) != 5 || got[4] != "10-30" {
+		t.Fatalf("per-segment delays changed: %#v", settings["delays"])
+	}
+	if got := settings["maxSplit"]; got != "10-15" {
+		t.Fatalf("maxSplit = %v, want 10-15", got)
+	}
+
+	var storedHost model.Host
+	if err := database.GetDB().First(&storedHost, host.Id).Error; err != nil {
+		t.Fatalf("reload host: %v", err)
+	}
+	if storedHost.FinalMask != finalMask {
+		t.Fatalf("stored host FinalMask changed: %s", storedHost.FinalMask)
+	}
+	var storedInbound model.Inbound
+	if err := database.GetDB().First(&storedInbound, ib.Id).Error; err != nil {
+		t.Fatalf("reload inbound: %v", err)
+	}
+	if storedInbound.StreamSettings != baseStream {
+		t.Fatalf("stored inbound StreamSettings changed: %s", storedInbound.StreamSettings)
 	}
 }
 
@@ -393,6 +480,61 @@ func TestSub_HostRealitySniOverride(t *testing.T) {
 	}
 }
 
+// A reality host's SNI reaches JSON and Clash as serverName only: xray refuses a
+// reality client that also carries serverNames (#6690).
+func TestSub_HostRealitySniJSONAndClash(t *testing.T) {
+	seedSubDB(t)
+	realityStream := `{"network":"tcp","security":"reality","tcpSettings":{"header":{"type":"none"}},"realitySettings":{"serverNames":["base.reality.com"],"shortIds":["abcd"],"settings":{"publicKey":"PBK","fingerprint":"chrome"}}}`
+	ib := seedSubInbound(t, "s1", "rlj", 4491, 1, realityStream)
+	seedHost(t, &model.Host{
+		InboundId: ib.Id, SortOrder: 0, Remark: "RLJ", Address: "rl.cdn.com", Port: 8443,
+		Security: "reality", Sni: "host.reality.com",
+	})
+
+	out, _, err := NewSubJsonService("", "", "", "", NewSubService("")).GetJson("s1", "req.example.com", false)
+	if err != nil {
+		t.Fatalf("GetJson: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("a single-config subscription should be one JSON object: %v\n%s", err, out)
+	}
+	reality := proxyRealitySettings(t, doc)
+	if got := reality["serverName"]; got != "host.reality.com" {
+		t.Fatalf("json serverName = %v, want the host's SNI host.reality.com", got)
+	}
+	if names, leaked := reality["serverNames"]; leaked {
+		t.Fatalf("server-side serverNames %v leaked into the json reality client:\n%s", names, out)
+	}
+
+	yaml, _, err := NewSubClashService(false, "", NewSubService("")).GetClash("s1", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetClash: %v", err)
+	}
+	if !strings.Contains(yaml, "servername: host.reality.com") {
+		t.Fatalf("clash proxy should carry the host's SNI:\n%s", yaml)
+	}
+}
+
+func proxyRealitySettings(t *testing.T, doc map[string]any) map[string]any {
+	t.Helper()
+	outbounds, _ := doc["outbounds"].([]any)
+	for _, ob := range outbounds {
+		outbound, _ := ob.(map[string]any)
+		if outbound["tag"] != "proxy" {
+			continue
+		}
+		stream, _ := outbound["streamSettings"].(map[string]any)
+		reality, ok := stream["realitySettings"].(map[string]any)
+		if !ok {
+			t.Fatalf("proxy outbound has no realitySettings: %v", outbound)
+		}
+		return reality
+	}
+	t.Fatalf("no proxy outbound in %v", doc)
+	return nil
+}
+
 // #9 — ExcludeFromSubTypes is honored per format: a host excluded from clash is
 // absent from GetClash but present in the raw GetSubs output.
 func TestSub_ExcludeFromSubTypes(t *testing.T) {
@@ -436,7 +578,13 @@ func TestSub_HostTlsOverRealityDropsRealityParams(t *testing.T) {
 	if !strings.Contains(joined, "security=tls") {
 		t.Fatalf("host forces tls, link must say so: %s", joined)
 	}
-	for _, leaked := range []string{"pbk=", "sid=", "spx=", "sni=master-dest.example.com"} {
+	for _, leaked := range []string{
+		"pbk=",
+		"sid=",
+		"spx=",
+		"support-x25519mlkem768=",
+		"sni=master-dest.example.com",
+	} {
 		if strings.Contains(joined, leaked) {
 			t.Fatalf("reality parameter %q survived a tls host override: %s", leaked, joined)
 		}
@@ -468,5 +616,111 @@ func TestSub_HostCipherSuitesJSON(t *testing.T) {
 	if !strings.Contains(out, `"cipherSuites": "TLS_CHACHA20_POLY1305_SHA256"`) &&
 		!strings.Contains(out, `"cipherSuites":"TLS_CHACHA20_POLY1305_SHA256"`) {
 		t.Fatalf("a host with no cipher suites should inherit the inbound's:\n%s", out)
+	}
+}
+
+func TestSub_ClientHostAssignmentFiltersHosts(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-host", "client", 4450, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-a", SortOrder: 1, Remark: "A", Address: "a.example.com", Port: 8443, Security: "tls"})
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-b", SortOrder: 2, Remark: "B", Address: "b.example.com", Port: 8443, Security: "tls"})
+
+	var client model.ClientRecord
+	if err := database.GetDB().Where("email = ?", "client@e").First(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+	if err := database.GetDB().Create(&model.ClientHost{ClientId: client.Id, GroupId: "group-a"}).Error; err != nil {
+		t.Fatalf("assign host group: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-host", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	joined := strings.Join(links, "\n")
+	if !strings.Contains(joined, "a.example.com:8443") {
+		t.Fatalf("assigned host should render: %s", joined)
+	}
+	if strings.Contains(joined, "b.example.com:8443") {
+		t.Fatalf("unassigned host must not render: %s", joined)
+	}
+}
+
+func TestSub_ClientHostAssignmentIsCaseInsensitive(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-host-case", "case", 4452, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "case-a", SortOrder: 1, Remark: "A", Address: "case-a.example.com", Port: 8443, Security: "tls"})
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "case-b", SortOrder: 2, Remark: "B", Address: "case-b.example.com", Port: 8443, Security: "tls"})
+
+	if err := database.GetDB().Model(&model.ClientRecord{}).
+		Where("email = ?", "case@e").
+		Update("email", "Case@E").Error; err != nil {
+		t.Fatalf("update client email: %v", err)
+	}
+	var client model.ClientRecord
+	if err := database.GetDB().Where("email = ?", "Case@E").First(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+	if err := database.GetDB().Create(&model.ClientHost{ClientId: client.Id, GroupId: "case-a"}).Error; err != nil {
+		t.Fatalf("assign host group: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-host-case", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	joined := strings.Join(links, "\n")
+	if !strings.Contains(joined, "case-a.example.com:8443") {
+		t.Fatalf("assigned host should render: %s", joined)
+	}
+	if strings.Contains(joined, "case-b.example.com:8443") {
+		t.Fatalf("unassigned host must not render for case-variant email: %s", joined)
+	}
+}
+
+func TestSub_ClientHostAssignmentDoesNotFallbackOnMissingInboundHost(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-host", "restricted", 4451, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "other-group", SortOrder: 1, Remark: "OTHER", Address: "other.example.com", Port: 8443, Security: "tls"})
+
+	var client model.ClientRecord
+	if err := database.GetDB().Where("email = ?", "restricted@e").First(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+
+	if err := database.GetDB().Create(&model.ClientHost{ClientId: client.Id, GroupId: "missing-here"}).Error; err != nil {
+		t.Fatalf("assign host group: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-host", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("restricted client with no matching Host must not fall back to the inbound link: %v", links)
+	}
+}
+
+func TestSub_ClientGroupHostAssignmentFiltersHosts(t *testing.T) {
+	seedSubDB(t)
+	ib := seedSubInbound(t, "s-group-host", "grouped", 4453, 1, wsTLSStream)
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-a", SortOrder: 1, Remark: "A", Address: "a.example.com", Port: 8443, Security: "tls"})
+	seedHost(t, &model.Host{InboundId: ib.Id, GroupId: "group-b", SortOrder: 2, Remark: "B", Address: "b.example.com", Port: 8443, Security: "tls"})
+	if err := database.GetDB().Model(&model.ClientRecord{}).
+		Where("email = ?", "grouped@e").
+		Update("group_name", "premium").Error; err != nil {
+		t.Fatalf("set client group: %v", err)
+	}
+	if err := database.GetDB().Create(&model.ClientGroupHost{GroupName: "premium", HostGroupId: "group-b"}).Error; err != nil {
+		t.Fatalf("assign client group host: %v", err)
+	}
+
+	links, _, _, _, err := NewSubService("").GetSubs("s-group-host", "req.example.com")
+	if err != nil {
+		t.Fatalf("GetSubs: %v", err)
+	}
+	joined := strings.Join(links, "\n")
+	if !strings.Contains(joined, "b.example.com:8443") || strings.Contains(joined, "a.example.com:8443") {
+		t.Fatalf("group host assignment should select only group-b: %s", joined)
 	}
 }
