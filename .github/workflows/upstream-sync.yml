@@ -40,9 +40,12 @@ jobs:
           git fetch upstream main
 
       - name: Test-merge upstream main
+        id: candidate
         run: |
           set -euo pipefail
+          base_sha="$(git rev-parse refs/remotes/origin/client-host)"
           git checkout -B automation/upstream-sync refs/remotes/origin/client-host
+
           if git merge --no-edit upstream/main; then
             echo "Upstream main merged without conflicts."
           else
@@ -60,19 +63,17 @@ jobs:
               [[ -n "$path" ]] || continue
               case "$path" in
                 .github/workflows/*)
-                  # This fork deliberately owns its workflow set; upstream workflow changes
-                  # are not imported into a fork that uses its own CI/release pipeline.
                   git checkout --ours -- "$path"
                   git add "$path"
                   ;;
                 README.md)
-                  # This fork's README is an intentional Client-Host installation guide.
+                  # Preserve the fork-specific Client-Host installation guide.
                   git checkout --ours -- "$path"
                   git add "$path"
                   ;;
                 internal/sub/host_sub_test.go)
-                  # Keep upstream's TLS subscription regression test and re-append only the
-                  # four Client-Host-specific test functions from our side of the merge.
+                  # Keep upstream's TLS subscription regression test and preserve the
+                  # four Client-Host-only subscription tests.
                   python3 - "$path" <<'PY'
           import pathlib
           import re
@@ -82,7 +83,6 @@ jobs:
           path = sys.argv[1]
           local = subprocess.check_output(["git", "show", f":2:{path}"], text=True)
           upstream = subprocess.check_output(["git", "show", f":3:{path}"], text=True)
-
           funcs = list(re.finditer(r"^func (\w+)\(", local, re.MULTILINE))
           wanted = []
           for i, match in enumerate(funcs):
@@ -95,23 +95,22 @@ jobs:
               block = local[match.start():end].strip()
               if block:
                   wanted.append(block)
-
           if not wanted:
               raise SystemExit("No Client-Host-only subscription tests were found to preserve.")
-          merged = upstream.rstrip() + "\n\n" + "\n\n".join(wanted) + "\n"
-          pathlib.Path(path).write_text(merged, encoding="utf-8")
+          pathlib.Path(path).write_text(
+              upstream.rstrip() + "\n\n" + "\n\n".join(wanted) + "\n",
+              encoding="utf-8",
+          )
           PY
                   git add "$path"
                   ;;
                 internal/tuic/manager_live_traffic_test.go|internal/tuic/relay_logging_test.go|internal/tuic/server_test.go|internal/tuic/stream_udp_lifecycle_test.go)
-                  # These conflicts are test harness updates; keep upstream's newer
-                  # deterministic QUIC stream-close and traffic-accounting assertions.
+                  # Use upstream's newer deterministic QUIC and traffic-test harness.
                   git checkout --theirs -- "$path"
                   git add "$path"
                   ;;
                 internal/web/translation/*.json)
-                  # Deep-merge locale objects: keep upstream values for keys present in both,
-                  # and preserve every Client-Host-only key at any nesting depth.
+                  # Prefer upstream on duplicate keys; retain Client-Host-only keys recursively.
                   python3 - "$path" <<'PY'
           import copy
           import json
@@ -161,8 +160,8 @@ jobs:
             git commit --no-edit
           fi
 
-          # Keep the entire workflow tree from client-host. This avoids importing upstream
-          # Actions into the fork and avoids requiring the automation token to create workflows.
+          # The fork owns its Actions definitions. Restore that directory to the exact
+          # client-host version so upstream workflows are not imported into this fork.
           git rm -r -f .github/workflows
           git checkout refs/remotes/origin/client-host -- .github/workflows
           git add .github/workflows
@@ -176,72 +175,47 @@ jobs:
             exit 1
           fi
 
-      - name: Push merge candidate and open/update upstream-sync PR
-        id: pr
+          candidate_sha="$(git rev-parse HEAD)"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "Prepared candidate $candidate_sha with base $base_sha"
+
+      - name: Push merge candidate branch
+        id: publish-candidate
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          BASE_SHA: ${{ steps.candidate.outputs.base_sha }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
+          remote_base="$(git ls-remote origin refs/heads/client-host | awk '{print $1}')"
+          [[ "$remote_base" == "$BASE_SHA" ]] || {
+            echo "::error::client-host moved before the candidate was published; refusing to test a stale base."
+            exit 1
+          }
           gh auth setup-git
           git push --force origin automation/upstream-sync
+          echo "sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
 
-          body="$(cat <<'EOF'
-          Automated upstream merge check against MHSanaei/3x-ui main.
-
-          This PR contains upstream changes only; client-host remains the base.
-          The automation dispatches full CI and CodeQL explicitly because events
-          created with GITHUB_TOKEN do not automatically start other workflows.
-          The PR is merged only after both checks pass for its exact head SHA.
-          EOF
-          )"
-
-          pr_number="$(gh pr list --repo "$REPO" --state open --head automation/upstream-sync --json number --jq '.[0].number // empty')"
-          if [[ -n "$pr_number" ]]; then
-            gh pr edit "$pr_number" --repo "$REPO" \
-              --title "chore: sync client-host with upstream" \
-              --body "$body"
-          else
-            gh pr create --repo "$REPO" \
-              --base client-host \
-              --head automation/upstream-sync \
-              --title "chore: sync client-host with upstream" \
-              --body "$body"
-            pr_number="$(gh pr list --repo "$REPO" --state open --head automation/upstream-sync --json number --jq '.[0].number // empty')"
-          fi
-
-          [[ "$pr_number" =~ ^[0-9]+$ ]] || {
-            echo "::error::Could not create or resolve the upstream-sync pull request."
-            exit 1
-          }
-          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
-
-      - name: Dispatch full CI and CodeQL for exact upstream PR head
+      - name: Dispatch full CI and CodeQL for exact candidate
         id: dispatch-ci
-        if: steps.pr.outputs.pr_number != ''
+        if: steps.publish-candidate.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
           set -euo pipefail
-          candidate_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
-          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "::error::Could not resolve the exact upstream-sync PR head."
-            exit 1
-          }
           gh workflow run ci.yml --repo "$REPO" --ref automation/upstream-sync
           gh workflow run codeql.yml --repo "$REPO" --ref automation/upstream-sync
-          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
-          echo "Dispatched CI and CodeQL for $candidate_sha"
+          echo "sha=${{ steps.publish-candidate.outputs.sha }}" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for full CI and CodeQL on the exact upstream PR head
+      - name: Wait for full CI and CodeQL on the exact candidate
         id: wait-ci
         if: steps.dispatch-ci.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           TESTED_SHA: ${{ steps.dispatch-ci.outputs.sha }}
         run: |
           set -euo pipefail
@@ -263,9 +237,9 @@ jobs:
           ci_ready=0
           codeql_ready=0
           for attempt in {1..180}; do
-            current_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
-            [[ "$current_sha" == "$TESTED_SHA" ]] || {
-              echo "::error::The upstream-sync PR head changed while checks were running; refusing to merge untested code."
+            candidate_now="$(gh api "repos/$REPO/git/ref/heads/automation/upstream-sync" --jq '.object.sha')"
+            [[ "$candidate_now" == "$TESTED_SHA" ]] || {
+              echo "::error::The candidate branch changed while checks were running; refusing to publish an untested commit."
               exit 1
             }
 
@@ -276,7 +250,7 @@ jobs:
               if [[ "$status" == "completed" ]]; then
                 if [[ "$conclusion" != "success" ]]; then
                   gh run view "$run_id" --repo "$REPO" --log-failed || true
-                  echo "::error::Full CI failed for the exact upstream-sync PR head. The PR is left open for inspection."
+                  echo "::error::Full CI failed for the exact candidate. client-host was not changed."
                   exit 1
                 fi
                 ci_ready=1
@@ -290,7 +264,7 @@ jobs:
               if [[ "$status" == "completed" ]]; then
                 if [[ "$conclusion" != "success" ]]; then
                   gh run view "$run_id" --repo "$REPO" --log-failed || true
-                  echo "::error::CodeQL failed for the exact upstream-sync PR head. The PR is left open for inspection."
+                  echo "::error::CodeQL failed for the exact candidate. client-host was not changed."
                   exit 1
                 fi
                 codeql_ready=1
@@ -298,56 +272,50 @@ jobs:
             fi
 
             if (( ci_ready == 1 && codeql_ready == 1 )); then
-              final_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
-              [[ "$final_sha" == "$TESTED_SHA" ]] || {
-                echo "::error::The upstream-sync PR head changed after CI/CodeQL passed; refusing to merge."
-                exit 1
-              }
               echo "sha=$TESTED_SHA" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 10
           done
 
-          echo "::error::Timed out waiting for full CI and CodeQL on the exact upstream-sync PR head."
+          echo "::error::Timed out waiting for CI and CodeQL on the exact candidate."
           exit 1
 
-      - name: Merge only the exact tested PR head
+      - name: Advance client-host to the exact tested merge commit
         if: steps.wait-ci.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          BASE_SHA: ${{ steps.candidate.outputs.base_sha }}
           TESTED_SHA: ${{ steps.wait-ci.outputs.sha }}
         run: |
           set -euo pipefail
-          final_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
-          [[ "$final_sha" == "$TESTED_SHA" ]] || {
-            echo "::error::The PR head changed after the recorded CI result; refusing to merge untested code."
+          current_base="$(gh api "repos/$REPO/git/ref/heads/client-host" --jq '.object.sha')"
+          [[ "$current_base" == "$BASE_SHA" ]] || {
+            echo "::error::client-host moved after testing began; refusing to overwrite newer changes."
             exit 1
           }
-          gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$TESTED_SHA"
+          candidate_sha="$(gh api "repos/$REPO/git/ref/heads/automation/upstream-sync" --jq '.object.sha')"
+          [[ "$candidate_sha" == "$TESTED_SHA" ]] || {
+            echo "::error::Candidate ref changed after CI/CodeQL passed; refusing to advance client-host."
+            exit 1
+          }
+          gh api --method PATCH "repos/$REPO/git/refs/heads/client-host" -f sha="$TESTED_SHA" >/dev/null
+          echo "client-host advanced to verified merge commit $TESTED_SHA"
 
       - name: Dispatch post-merge CI, CodeQL, and Client-Host build
         if: steps.wait-ci.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          MERGED_SHA: ${{ steps.wait-ci.outputs.sha }}
         run: |
           set -euo pipefail
-          merged_sha=""
-          for attempt in {1..30}; do
-            merged_sha="$(gh api "repos/$REPO/git/ref/heads/client-host" --jq '.object.sha' 2>/dev/null || true)"
-            if [[ "$merged_sha" =~ ^[0-9a-f]{40}$ && "$merged_sha" != "${{ steps.wait-ci.outputs.sha }}" ]]; then
-              break
-            fi
-            sleep 2
-          done
-          [[ "$merged_sha" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "::error::Could not resolve the post-merge client-host head."
+          current_sha="$(gh api "repos/$REPO/git/ref/heads/client-host" --jq '.object.sha')"
+          [[ "$current_sha" == "$MERGED_SHA" ]] || {
+            echo "::error::client-host does not point to the exact tested merge commit."
             exit 1
           }
-          echo "Post-merge client-host head: $merged_sha"
           gh workflow run ci.yml --repo "$REPO" --ref client-host
           gh workflow run codeql.yml --repo "$REPO" --ref client-host
           gh workflow run build-client-host.yml --repo "$REPO" --ref client-host
