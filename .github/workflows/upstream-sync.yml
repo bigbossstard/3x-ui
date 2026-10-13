@@ -59,6 +59,12 @@ jobs:
             while IFS= read -r path; do
               [[ -n "$path" ]] || continue
               case "$path" in
+                .github/workflows/*)
+                  # This fork deliberately owns its workflow set; upstream workflow changes
+                  # are not imported into a fork that uses its own CI/release pipeline.
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
                 README.md)
                   # This fork's README is an intentional Client-Host installation guide.
                   git checkout --ours -- "$path"
@@ -153,6 +159,15 @@ jobs:
               exit 1
             fi
             git commit --no-edit
+          fi
+
+          # Keep the entire workflow tree from client-host. This avoids importing upstream
+          # Actions into the fork and avoids requiring the automation token to create workflows.
+          git rm -r -f .github/workflows
+          git checkout refs/remotes/origin/client-host -- .github/workflows
+          git add .github/workflows
+          if ! git diff --cached --quiet; then
+            git commit --amend --no-edit
           fi
 
           if ! git diff --check refs/remotes/origin/client-host...HEAD; then
