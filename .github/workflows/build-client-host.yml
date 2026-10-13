@@ -115,7 +115,7 @@ jobs:
             xch.sh.sha256
 
       - name: Wait for full client-host CI and CodeQL
-        if: github.event_name == 'push' && steps.gate.outputs.needs-full-ci == '1'
+        if: (github.event_name == 'push' && steps.gate.outputs.needs-full-ci == '1') || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -161,7 +161,7 @@ jobs:
           exit 1
 
       - name: Check whether this commit is still current
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         id: publication_gate
         env:
           GITHUB_SHA: ${{ github.sha }}
@@ -177,7 +177,7 @@ jobs:
           fi
 
       - name: Publish immutable commit release
-        if: github.event_name == 'push' && steps.publication_gate.outputs.publish == 'true'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication_gate.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_SHA: ${{ github.sha }}
