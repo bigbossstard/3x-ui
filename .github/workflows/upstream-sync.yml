@@ -156,31 +156,53 @@ jobs:
             exit 1
           fi
 
-      - name: Open or update upstream-sync PR
+      - name: Push merge candidate and open/update upstream-sync PR
         id: pr
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          base: client-host
-          branch: automation/upstream-sync
-          delete-branch: true
-          title: "chore: sync client-host with upstream"
-          commit-message: "chore: sync client-host with upstream"
-          body: |
-            Automated upstream merge check against MHSanaei/3x-ui main.
-
-            This PR contains upstream changes only; client-host remains the base.
-            The automation dispatches full CI and CodeQL explicitly because events
-            created with GITHUB_TOKEN do not automatically start other workflows.
-            The PR is merged only after both checks pass for its exact head SHA.
-
-      - name: Dispatch full CI and CodeQL for exact upstream PR head
-        id: dispatch-ci
-        if: steps.pr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git push --force origin automation/upstream-sync
+
+          body="$(cat <<'EOF'
+          Automated upstream merge check against MHSanaei/3x-ui main.
+
+          This PR contains upstream changes only; client-host remains the base.
+          The automation dispatches full CI and CodeQL explicitly because events
+          created with GITHUB_TOKEN do not automatically start other workflows.
+          The PR is merged only after both checks pass for its exact head SHA.
+          EOF
+          )"
+
+          pr_number="$(gh pr list --repo "$REPO" --state open --head automation/upstream-sync --json number --jq '.[0].number // empty')"
+          if [[ -n "$pr_number" ]]; then
+            gh pr edit "$pr_number" --repo "$REPO" \
+              --title "chore: sync client-host with upstream" \
+              --body "$body"
+          else
+            gh pr create --repo "$REPO" \
+              --base client-host \
+              --head automation/upstream-sync \
+              --title "chore: sync client-host with upstream" \
+              --body "$body"
+            pr_number="$(gh pr list --repo "$REPO" --state open --head automation/upstream-sync --json number --jq '.[0].number // empty')"
+          fi
+
+          [[ "$pr_number" =~ ^[0-9]+$ ]] || {
+            echo "::error::Could not create or resolve the upstream-sync pull request."
+            exit 1
+          }
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch full CI and CodeQL for exact upstream PR head
+        id: dispatch-ci
+        if: steps.pr.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
           set -euo pipefail
           candidate_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
@@ -199,7 +221,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           TESTED_SHA: ${{ steps.dispatch-ci.outputs.sha }}
         run: |
           set -euo pipefail
@@ -275,7 +297,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           TESTED_SHA: ${{ steps.wait-ci.outputs.sha }}
         run: |
           set -euo pipefail
