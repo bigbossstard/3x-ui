@@ -38,14 +38,121 @@ jobs:
         run: |
           set -euo pipefail
           git checkout -B automation/upstream-sync refs/remotes/origin/client-host
-          if ! git merge --no-edit upstream/main; then
-            git merge --abort
-            echo "::error::Upstream main conflicts with client-host. No branch was changed; refusing to guess at a feature conflict."
-            exit 1
+          if git merge --no-edit upstream/main; then
+            echo "Upstream main merged without conflicts."
+          else
+            conflict_paths="$(git diff --name-only --diff-filter=U)"
+            if [[ -z "$conflict_paths" ]]; then
+              git merge --abort || true
+              echo "::error::The upstream merge failed without a resolvable conflict set."
+              exit 1
+            fi
+
+            echo "Resolving only reviewed conflict classes:"
+            printf '%s\n' "$conflict_paths"
+
+            while IFS= read -r path; do
+              [[ -n "$path" ]] || continue
+              case "$path" in
+                README.md)
+                  # This fork's README is an intentional Client-Host installation guide.
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                internal/sub/host_sub_test.go)
+                  # Keep upstream's TLS subscription regression test and re-append only the
+                  # four Client-Host-specific test functions from our side of the merge.
+                  python3 - "$path" <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          path = sys.argv[1]
+          local = subprocess.check_output(["git", "show", f":2:{path}"], text=True)
+          upstream = subprocess.check_output(["git", "show", f":3:{path}"], text=True)
+
+          funcs = list(re.finditer(r"^func (\w+)\(", local, re.MULTILINE))
+          wanted = []
+          for i, match in enumerate(funcs):
+              name = match.group(1)
+              if not re.fullmatch(r"TestSub_Client(?:Host|GroupHost)\w*", name):
+                  continue
+              if re.search(rf"^func {re.escape(name)}\(", upstream, re.MULTILINE):
+                  continue
+              end = funcs[i + 1].start() if i + 1 < len(funcs) else len(local)
+              block = local[match.start():end].strip()
+              if block:
+                  wanted.append(block)
+
+          if not wanted:
+              raise SystemExit("No Client-Host-only subscription tests were found to preserve.")
+          merged = upstream.rstrip() + "\n\n" + "\n\n".join(wanted) + "\n"
+          pathlib.Path(path).write_text(merged, encoding="utf-8")
+          PY
+                  git add "$path"
+                  ;;
+                internal/tuic/manager_live_traffic_test.go|internal/tuic/relay_logging_test.go|internal/tuic/server_test.go|internal/tuic/stream_udp_lifecycle_test.go)
+                  # These conflicts are test harness updates; keep upstream's newer
+                  # deterministic QUIC stream-close and traffic-accounting assertions.
+                  git checkout --theirs -- "$path"
+                  git add "$path"
+                  ;;
+                internal/web/translation/*.json)
+                  # Deep-merge locale objects: keep upstream values for keys present in both,
+                  # and preserve every Client-Host-only key at any nesting depth.
+                  python3 - "$path" <<'PY'
+          import copy
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          path = sys.argv[1]
+          local = json.loads(subprocess.check_output(["git", "show", f":2:{path}"], text=True))
+          upstream = json.loads(subprocess.check_output(["git", "show", f":3:{path}"], text=True))
+
+          def merge(up, own):
+              if isinstance(up, dict) and isinstance(own, dict):
+                  result = copy.deepcopy(up)
+                  for key, value in own.items():
+                      if key not in result:
+                          result[key] = copy.deepcopy(value)
+                      elif isinstance(result[key], dict) and isinstance(value, dict):
+                          result[key] = merge(result[key], value)
+                  return result
+              return copy.deepcopy(up)
+
+          merged = merge(upstream, local)
+          if not isinstance(merged, dict):
+              raise SystemExit(f"Expected locale JSON object in {path}")
+          pathlib.Path(path).write_text(
+              json.dumps(merged, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+                  git add "$path"
+                  ;;
+                *)
+                  git merge --abort || true
+                  echo "::error::Unexpected upstream conflict in '$path'. No automatic resolution was attempted."
+                  exit 1
+                  ;;
+              esac
+            done <<< "$conflict_paths"
+
+            if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
+              git merge --abort || true
+              echo "::error::Unresolved conflicts remain after the reviewed resolution rules."
+              git diff --name-only --diff-filter=U
+              exit 1
+            fi
+            git commit --no-edit
           fi
+
           if ! git diff --check refs/remotes/origin/client-host...HEAD; then
             echo "::error::The upstream merge introduced whitespace errors."
-            git diff --check client-host...HEAD
+            git diff --check refs/remotes/origin/client-host...HEAD
             exit 1
           fi
 
