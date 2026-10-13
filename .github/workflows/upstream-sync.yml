@@ -176,9 +176,9 @@ jobs:
 
           path = pathlib.Path("frontend/src/test/client-renewal-help.test.tsx")
           content = path.read_text(encoding="utf-8")
-          marker = "      attachedIds={[1]}\\n      inbounds="
-          replacement = "      attachedIds={[1]}\\n      hosts={[]}\\n      inbounds="
-          if "      hosts={[]}\\n" not in content:
+          marker = "      attachedIds={[1]}\n      inbounds="
+          replacement = "      attachedIds={[1]}\n      hosts={[]}\n      inbounds="
+          if "      hosts={[]}\n" not in content:
               if marker not in content:
                   raise SystemExit("Expected ClientFormModal test fixture was not found; refusing to patch an unknown layout.")
               content = content.replace(marker, replacement, 1)
