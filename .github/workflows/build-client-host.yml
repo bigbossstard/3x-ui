@@ -197,7 +197,7 @@ jobs:
           fi
 
       - name: Move immutable current pointer
-        if: github.event_name == 'push' && steps.publication_gate.outputs.publish == 'true'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication_gate.outputs.publish == 'true'
         env:
           GITHUB_SHA: ${{ github.sha }}
         run: |
