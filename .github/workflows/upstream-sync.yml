@@ -42,13 +42,13 @@ jobs:
       - name: Test-merge upstream main
         run: |
           set -euo pipefail
-          git checkout -B automation/upstream-sync client-host
+          git checkout -B automation/upstream-sync refs/remotes/origin/client-host
           if ! git merge --no-edit upstream/main; then
             git merge --abort
             echo "::error::Upstream main conflicts with client-host. No branch was changed; refusing to guess at a feature conflict."
             exit 1
           fi
-          if ! git diff --check client-host...HEAD; then
+          if ! git diff --check refs/remotes/origin/client-host...HEAD; then
             echo "::error::The upstream merge introduced whitespace errors."
             git diff --check client-host...HEAD
             exit 1
