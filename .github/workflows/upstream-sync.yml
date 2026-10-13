@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: read
+  actions: write
 
 concurrency:
   group: client-host-upstream-sync
@@ -28,6 +28,7 @@ jobs:
 
       - name: Configure upstream
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/MHSanaei/3x-ui.git
@@ -62,10 +63,12 @@ jobs:
             Automated upstream merge check against MHSanaei/3x-ui main.
 
             This PR contains upstream changes only; client-host remains the base.
-            The automation merges it only after the full client-host CI for this exact PR head is green.
+            The automation dispatches full CI and CodeQL explicitly because events
+            created with GITHUB_TOKEN do not automatically start other workflows.
+            The PR is merged only after both checks pass for its exact head SHA.
 
-      - name: Wait for exact upstream PR CI
-        id: wait-ci
+      - name: Dispatch full CI and CodeQL for exact upstream PR head
+        id: dispatch-ci
         if: steps.pr.outputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -73,42 +76,95 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
-          tested_sha=""
-          for attempt in {1..180}; do
-            head_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
-            run_line="$(gh run list               --repo "$REPO"               --workflow ci.yml               --commit "$head_sha"               --limit 10               --json databaseId,status,conclusion,createdAt               --jq 'sort_by(.createdAt) | reverse | .[0] | [.databaseId,.status,.conclusion] | @tsv' || true)"
+          candidate_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::Could not resolve the exact upstream-sync PR head."
+            exit 1
+          }
+          gh workflow run ci.yml --repo "$REPO" --ref automation/upstream-sync
+          gh workflow run codeql.yml --repo "$REPO" --ref automation/upstream-sync
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "Dispatched CI and CodeQL for $candidate_sha"
 
-            if [[ -n "$run_line" ]]; then
-              IFS=$'\t' read -r run_id status conclusion <<<"$run_line"
+      - name: Wait for full CI and CodeQL on the exact upstream PR head
+        id: wait-ci
+        if: steps.dispatch-ci.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+          TESTED_SHA: ${{ steps.dispatch-ci.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          get_run() {
+            local workflow="$1"
+            local runs
+            runs="$(gh run list --repo "$REPO" --workflow "$workflow" --branch automation/upstream-sync --event workflow_dispatch --limit 20 --json databaseId,headSha,status,conclusion,createdAt || true)"
+            [[ -n "$runs" ]] || return 0
+            printf '%s' "$runs" | jq -r --arg sha "$TESTED_SHA" '
+              map(select(.headSha == $sha))
+              | sort_by(.createdAt) | reverse
+              | (.[0] // {})
+              | if .databaseId == null then empty
+                else [.databaseId, .status, .conclusion] | @tsv end
+            '
+          }
+
+          ci_ready=0
+          codeql_ready=0
+          for attempt in {1..180}; do
+            current_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
+            [[ "$current_sha" == "$TESTED_SHA" ]] || {
+              echo "::error::The upstream-sync PR head changed while checks were running; refusing to merge untested code."
+              exit 1
+            }
+
+            ci_line="$(get_run ci.yml)"
+            if [[ -n "$ci_line" ]]; then
+              IFS=$'\t' read -r run_id status conclusion <<<"$ci_line"
               echo "CI run=$run_id status=$status conclusion=$conclusion"
               if [[ "$status" == "completed" ]]; then
                 if [[ "$conclusion" != "success" ]]; then
                   gh run view "$run_id" --repo "$REPO" --log-failed || true
-                  echo "::error::The exact upstream-sync PR head failed full CI. The PR is left open for inspection and no merge is attempted."
+                  echo "::error::Full CI failed for the exact upstream-sync PR head. The PR is left open for inspection."
                   exit 1
                 fi
-                tested_sha="$head_sha"
-                break
+                ci_ready=1
               fi
-            else
-              echo "Waiting for full CI to register for PR head $head_sha..."
+            fi
+
+            codeql_line="$(get_run codeql.yml)"
+            if [[ -n "$codeql_line" ]]; then
+              IFS=$'\t' read -r run_id status conclusion <<<"$codeql_line"
+              echo "CodeQL run=$run_id status=$status conclusion=$conclusion"
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" != "success" ]]; then
+                  gh run view "$run_id" --repo "$REPO" --log-failed || true
+                  echo "::error::CodeQL failed for the exact upstream-sync PR head. The PR is left open for inspection."
+                  exit 1
+                fi
+                codeql_ready=1
+              fi
+            fi
+
+            if (( ci_ready == 1 && codeql_ready == 1 )); then
+              final_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
+              [[ "$final_sha" == "$TESTED_SHA" ]] || {
+                echo "::error::The upstream-sync PR head changed after CI/CodeQL passed; refusing to merge."
+                exit 1
+              }
+              echo "sha=$TESTED_SHA" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
             sleep 10
           done
 
-          [[ -n "$tested_sha" ]] || { echo "::error::Timed out waiting for full client-host CI." >&2; exit 1; }
-
-          final_sha="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')"
-          [[ "$final_sha" == "$tested_sha" ]] || {
-            echo "::error::The upstream-sync PR head changed after CI passed; refusing to merge untested code."
-            exit 1
-          }
-
-          echo "Exact tested head: $tested_sha"
-          echo "sha=$tested_sha" >> "$GITHUB_OUTPUT"
+          echo "::error::Timed out waiting for full CI and CodeQL on the exact upstream-sync PR head."
+          exit 1
 
       - name: Merge only the exact tested PR head
-        if: steps.pr.outputs.pull-request-number != '' && steps.wait-ci.outputs.sha != ''
+        if: steps.wait-ci.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -121,4 +177,29 @@ jobs:
             echo "::error::The PR head changed after the recorded CI result; refusing to merge untested code."
             exit 1
           }
-          gh pr merge "$PR_NUMBER"             --repo "$REPO"             --squash             --delete-branch             --match-head-commit "$TESTED_SHA"
+          gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$TESTED_SHA"
+
+      - name: Dispatch post-merge CI, CodeQL, and Client-Host build
+        if: steps.wait-ci.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          merged_sha=""
+          for attempt in {1..30}; do
+            merged_sha="$(gh api "repos/$REPO/git/ref/heads/client-host" --jq '.object.sha' 2>/dev/null || true)"
+            if [[ "$merged_sha" =~ ^[0-9a-f]{40}$ && "$merged_sha" != "${{ steps.wait-ci.outputs.sha }}" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          [[ "$merged_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::Could not resolve the post-merge client-host head."
+            exit 1
+          }
+          echo "Post-merge client-host head: $merged_sha"
+          gh workflow run ci.yml --repo "$REPO" --ref client-host
+          gh workflow run codeql.yml --repo "$REPO" --ref client-host
+          gh workflow run build-client-host.yml --repo "$REPO" --ref client-host
+          echo "Dispatched post-merge CI, CodeQL, and Client-Host release build."
