@@ -96,11 +96,7 @@ func TestAudit3ManagerEnsureActualSendersWithPersistentTraffic(t *testing.T) {
 			if _, err := stream.Write(frame.Bytes()); err != nil {
 				t.Fatal(err)
 			}
-			// The server cancels the read side after consuming the size-delimited
-			// packet. That STOP_SENDING can race with this FIN, so Close may report
-			// a canceled stream even though the packet was accepted. The echoed
-			// response below is the end-to-end success check.
-			_ = stream.Close()
+			closeUniStream(t, stream)
 			response, err := p.client.AcceptUniStream(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -166,9 +162,7 @@ func TestAudit3ManagerEnsureActualSendersWithPersistentTraffic(t *testing.T) {
 		if _, err := auth.Write(authBytes); err != nil {
 			t.Fatal(err)
 		}
-		// Authentication is size-delimited too; a server-side read cancel can
-		// race with this FIN. The sender checks below wait for auth to complete.
-		_ = auth.Close()
+		closeUniStream(t, auth)
 
 		waitForClientCongestionSender(t, server, client, served)
 		var serverConn *quic.Conn
