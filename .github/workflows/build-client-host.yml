@@ -113,6 +113,7 @@ jobs:
             install-client-host.sh.sha256
             xch.sh
             xch.sh.sha256
+          retention-days: 7
 
       - name: Wait for full client-host CI and CodeQL
         if: (github.event_name == 'push' && steps.gate.outputs.needs-full-ci == '1') || github.event_name == 'workflow_dispatch'
