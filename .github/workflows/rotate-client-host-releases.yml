@@ -1,9 +1,8 @@
 name: Rotate Client-Host Releases
 
 # Keep the immutable release referenced by client-host-current and the newest
-# preceding immutable release. Older Client-Host commit releases are removed
-# only after a successful build, with a daily safety pass as a fallback.
-# The legacy rolling release tagged exactly "client-host" is never touched.
+# preceding Client-Host release. Any older Client-Host release is removed, including
+# the obsolete rolling release tagged exactly "client-host". A daily pass is a fallback.
 
 on:
   push:
@@ -60,12 +59,13 @@ jobs:
           current_tag="client-host-${current_sha}"
 
           # --slurp combines all pages, so the newest two are selected across the
-          # entire release list, not just within an individual API page.
+          # entire release list, not just within an individual API page. The candidate
+          # filter includes both immutable SHA tags and the obsolete rolling tag.
           releases_json="$(gh api --paginate --slurp "repos/${REPO}/releases?per_page=100")"
           mapfile -t release_tags < <(
             jq -r '
               [.[][] |
-                select((.tag_name // "") | test("^client-host-[0-9a-fA-F]{40}$"))]
+                select((.tag_name // "") | test("^(client-host|client-host-[0-9a-fA-F]{40})$"))]
               | sort_by(.published_at // .created_at // "")
               | reverse
               | .[].tag_name
