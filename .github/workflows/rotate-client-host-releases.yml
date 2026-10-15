@@ -1,0 +1,126 @@
+name: Rotate Client-Host Releases
+
+# Keep the immutable release referenced by client-host-current and the newest
+# preceding immutable release. Older Client-Host commit releases are removed
+# only after a successful build, with a daily safety pass as a fallback.
+# The legacy rolling release tagged exactly "client-host" is never touched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rotate-client-host-releases.yml"
+  workflow_run:
+    workflows: ["Build Client-Host"]
+    types: [completed]
+  schedule:
+    - cron: "27 4 * * *" # daily at 04:27 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview deletions only (leave enabled for a manual test)"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: client-host-release-rotation
+  cancel-in-progress: false
+
+jobs:
+  rotate:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.head_branch == 'client-host')
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Keep the current and immediately previous releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_sha="$(gh api "repos/${REPO}/git/ref/tags/client-host-current" --jq '.object.sha')"
+          if [[ ! "$current_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Could not resolve client-host-current to a commit SHA. No releases will be deleted."
+            exit 1
+          fi
+          current_sha="${current_sha,,}"
+          current_tag="client-host-${current_sha}"
+
+          # --slurp combines all pages, so the newest two are selected across the
+          # entire release list, not just within an individual API page.
+          releases_json="$(gh api --paginate --slurp "repos/${REPO}/releases?per_page=100")"
+          mapfile -t release_tags < <(
+            jq -r '
+              [.[][] |
+                select((.tag_name // "") | test("^client-host-[0-9a-fA-F]{40}$"))]
+              | sort_by(.published_at // .created_at // "")
+              | reverse
+              | .[].tag_name
+            ' <<< "$releases_json"
+          )
+
+          if (( ${#release_tags[@]} == 0 )); then
+            echo "::error::No immutable Client-Host releases were found. No releases will be deleted."
+            exit 1
+          fi
+
+          current_found=false
+          previous_tag=""
+          for tag in "${release_tags[@]}"; do
+            if [[ "$tag" == "$current_tag" ]]; then
+              current_found=true
+            elif [[ -z "$previous_tag" ]]; then
+              previous_tag="$tag"
+            fi
+          done
+
+          if [[ "$current_found" != true ]]; then
+            echo "::error::The release pointed to by client-host-current ($current_tag) is missing. No releases will be deleted."
+            exit 1
+          fi
+
+          echo "Protected current release: $current_tag"
+          if [[ -n "$previous_tag" ]]; then
+            echo "Protected previous release: $previous_tag"
+          else
+            echo "No previous immutable release exists yet; current release remains protected."
+          fi
+          echo "Dry run: $DRY_RUN"
+
+          # A new publication may happen between listing releases and deletion.
+          # Abort if the pointer moves; never delete from a stale snapshot.
+          for tag in "${release_tags[@]}"; do
+            if [[ "$tag" == "$current_tag" || "$tag" == "$previous_tag" ]]; then
+              echo "KEEP: $tag"
+              continue
+            fi
+
+            latest_now="$(gh api "repos/${REPO}/git/ref/tags/client-host-current" --jq '.object.sha')"
+            latest_now="${latest_now,,}"
+            if [[ "$latest_now" != "$current_sha" ]]; then
+              echo "::notice::client-host-current changed during rotation. Stopping without deleting more releases."
+              exit 0
+            fi
+
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "DRY RUN: would delete obsolete release and tag: $tag"
+            else
+              echo "Deleting obsolete release and tag: $tag"
+              gh release delete "$tag" --repo "$REPO" --yes --cleanup-tag
+            fi
+          done
+
+          echo "Client-Host release rotation finished."
