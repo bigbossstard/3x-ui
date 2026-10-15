@@ -1,12 +1,11 @@
 name: Mutation testing
 
-# Mutation testing (gremlins) is the objective check for "fake" tests: it mutates the
-# source and a surviving (LIVED) mutant means no test caught the change. It is SLOW, so it
-# runs nightly / on demand and scoped per package — never per-commit. It is informational:
-# no thresholds are set, so it reports survivors as artifacts without failing the build.
+# Mutation testing is deliberately expensive: run weekly for trend/quality checks,
+# while keeping workflow_dispatch available for an on-demand run. The regular CI
+# remains the fast feedback path for ordinary changes.
 on:
   schedule:
-    - cron: "0 3 * * *" # 03:00 UTC daily
+    - cron: "0 3 * * 0" # 03:00 UTC every Sunday
   workflow_dispatch:
 
 permissions:
@@ -60,3 +59,4 @@ jobs:
           name: mutation-${{ matrix.name }}
           path: mutation-${{ matrix.name }}.json
           if-no-files-found: ignore
+          retention-days: 14
