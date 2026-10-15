@@ -1,0 +1,111 @@
+name: Rotate Client-Host Releases
+
+# Keep the release referenced by client-host-current indefinitely.
+# Other immutable client-host-<40-char-sha> releases expire after 14 days.
+# The legacy rolling release named exactly client-host is intentionally excluded.
+on:
+  schedule:
+    - cron: "27 4 * * *" # daily at 04:27 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report candidates without deleting releases (default for manual runs)"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: client-host-release-rotation
+  cancel-in-progress: false
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      RETENTION_DAYS: "14"
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    steps:
+      - name: Rotate expired immutable builds
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_sha="$(gh api "repos/${REPO}/git/ref/tags/client-host-current" --jq '.object.sha')"
+          if [[ ! "$current_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Cannot resolve client-host-current to a commit SHA; refusing to delete any release."
+            exit 1
+          fi
+          current_sha="${current_sha,,}"
+          current_tag="client-host-${current_sha}"
+          cutoff_epoch="$(date -u -d "${RETENTION_DAYS} days ago" +%s)"
+
+          # Read the full release list before deleting anything. Fail closed if the
+          # immutable release referenced by the current pointer is absent.
+          release_rows="$(gh api --paginate "repos/${REPO}/releases?per_page=100" \
+            --jq '.[] | [.id, .tag_name, (.published_at // .created_at // "")] | @tsv')"
+
+          if ! awk -F '\t' -v tag="$current_tag" '$2 == tag {found=1} END {exit !found}' <<< "$release_rows"; then
+            echo "::error::Current release $current_tag is missing from the release list; refusing to delete any release."
+            exit 1
+          fi
+
+          echo "Protected current release: $current_tag"
+          echo "Retention window: ${RETENTION_DAYS} days"
+          echo "Dry run: ${DRY_RUN}"
+
+          while IFS=$'\t' read -r release_id tag published_at; do
+            [[ -n "${release_id:-}" && -n "${tag:-}" ]] || continue
+
+            # Only rotate immutable Client-Host releases. Never touch the mutable
+            # pointer, non-Client-Host releases, or the legacy rolling client-host.
+            if [[ ! "$tag" =~ ^client-host-([0-9a-fA-F]{40})$ ]]; then
+              continue
+            fi
+            release_sha="${BASH_REMATCH[1],,}"
+            if [[ "$release_sha" == "$current_sha" ]]; then
+              echo "KEEP current: $tag"
+              continue
+            fi
+            [[ -n "${published_at:-}" ]] || {
+              echo "KEEP (no publication date): $tag"
+              continue
+            }
+            if ! published_epoch="$(date -u -d "$published_at" +%s 2>/dev/null)"; then
+              echo "KEEP (unparseable publication date): $tag"
+              continue
+            fi
+            if (( published_epoch >= cutoff_epoch )); then
+              echo "KEEP recent: $tag ($published_at)"
+              continue
+            fi
+
+            # Re-check the pointer immediately before mutation to avoid deleting the
+            # release if it became current while this job was running.
+            latest_now="$(gh api "repos/${REPO}/git/ref/tags/client-host-current" --jq '.object.sha')"
+            latest_now="${latest_now,,}"
+            if [[ "$latest_now" == "$release_sha" ]]; then
+              echo "KEEP newly-current release: $tag"
+              continue
+            fi
+
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "DRY RUN: would delete expired release $tag (published $published_at)"
+              continue
+            fi
+
+            echo "Deleting expired release $tag (published $published_at)"
+            gh api --method DELETE "repos/${REPO}/releases/${release_id}"
+            # Remove only this exact immutable release tag; a leftover tag is harmless
+            # but creates clutter if GitHub has already removed it.
+            if ! gh api --method DELETE "repos/${REPO}/git/refs/tags/${tag}" >/dev/null; then
+              echo "::warning::Release was deleted, but tag $tag could not be removed."
+            fi
+          done <<< "$release_rows"
+
+          echo "Client-Host release rotation finished."
