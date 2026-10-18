@@ -104,6 +104,83 @@ jobs:
                   git checkout --theirs -- "$path"
                   git add "$path"
                   ;;
+                docs/content/docs/en/reference/api/clients.mdx)
+                  # This generated page changed format upstream. Keep upstream's current
+                  # OpenAPIPage markup while retaining Client-Host-only host endpoints.
+                  python3 - "$path" <<'PY'
+          import json
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          path = sys.argv[1]
+          local = subprocess.check_output(["git", "show", f":2:{path}"], text=True)
+          upstream = subprocess.check_output(["git", "show", f":3:{path}"], text=True)
+
+          def operation_block(content, side):
+              match = re.search(r"operations\s*=\s*\{?(\[[\s\S]*?\])\}?\s*,?\s*showTitle", content)
+              if match is None:
+                  raise SystemExit(f"Could not locate {side} OpenAPI operations in {path}")
+              return match
+
+          local_match = operation_block(local, "Client-Host")
+          upstream_match = operation_block(upstream, "upstream")
+
+          def parse_operations(block, side):
+              try:
+                  operations = json.loads(block)
+              except json.JSONDecodeError:
+                  operations = [
+                      {"path": item.group(1), "method": item.group(2)}
+                      for item in re.finditer(
+                          r"""\{\s*path:\s*['"]([^'"]+)['"]\s*,\s*method:\s*['"]([^'"]+)['"]\s*\}""",
+                          block,
+                      )
+                  ]
+              if not isinstance(operations, list) or not all(
+                  isinstance(item, dict)
+                  and isinstance(item.get("path"), str)
+                  and isinstance(item.get("method"), str)
+                  for item in operations
+              ):
+                  raise SystemExit(f"Invalid {side} OpenAPI operation list in {path}")
+              return operations
+
+          local_ops = parse_operations(local_match.group(1), "Client-Host")
+          merged_ops = parse_operations(upstream_match.group(1), "upstream")
+          seen = {(item["path"], item["method"]) for item in merged_ops}
+
+          # Preserve upstream ordering and insert Client-Host-only operations next to
+          # the next shared operation, keeping related endpoint groups together.
+          for index, operation in enumerate(local_ops):
+              key = (operation["path"], operation["method"])
+              if key in seen:
+                  continue
+              insert_at = None
+              for following in local_ops[index + 1:]:
+                  following_key = (following["path"], following["method"])
+                  if following_key in seen:
+                      insert_at = next(
+                          i for i, existing in enumerate(merged_ops)
+                          if (existing["path"], existing["method"]) == following_key
+                      )
+                      break
+              if insert_at is None:
+                  merged_ops.append(operation)
+              else:
+                  merged_ops.insert(insert_at, operation)
+              seen.add(key)
+
+          merged = (
+              upstream[:upstream_match.start(1)]
+              + json.dumps(merged_ops, separators=(",", ":"))
+              + upstream[upstream_match.end(1):]
+          )
+          pathlib.Path(path).write_text(merged, encoding="utf-8")
+          PY
+                  git add "$path"
+                  ;;
                 internal/web/translation/*.json)
                   # Prefer upstream on duplicate keys; retain Client-Host-only keys recursively.
                   python3 - "$path" <<'PY'
