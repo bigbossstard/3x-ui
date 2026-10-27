@@ -1,0 +1,131 @@
+name: One-time main branch and workflow-run cleanup
+
+on:
+  push:
+    branches:
+      - client-host
+    paths:
+      - ".github/workflows/one-time-pr-branch-cleanup.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    name: Remove obsolete main branch history and branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Delete workflow runs belonging only to obsolete branches
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branchesToClean = ["main", "automation/upstream-sync"];
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+            let deletedRuns = 0;
+            let missingRuns = 0;
+            const failures = [];
+
+            for (const branch of branchesToClean) {
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRunsForRepo,
+                { owner, repo, branch, per_page: 100 }
+              );
+              core.info(`Branch ${branch}: found ${runs.length} workflow runs to remove.`);
+
+              for (const run of runs) {
+                let removed = false;
+                for (let attempt = 1; attempt <= 5 && !removed; attempt++) {
+                  try {
+                    await github.rest.actions.deleteWorkflowRun({
+                      owner,
+                      repo,
+                      run_id: run.id
+                    });
+                    deletedRuns++;
+                    removed = true;
+                    core.info(`Deleted run ${run.id}: ${run.name} (${branch}, ${run.created_at}).`);
+                  } catch (error) {
+                    if (error.status === 404) {
+                      missingRuns++;
+                      removed = true;
+                      core.info(`Run ${run.id} was already absent.`);
+                    } else if ((error.status === 429 || error.status === 403 || error.status >= 500) && attempt < 5) {
+                      const delay = attempt * 3000;
+                      core.warning(`Transient API error deleting run ${run.id} (attempt ${attempt}); retrying after ${delay}ms: ${error.message}`);
+                      await sleep(delay);
+                    } else {
+                      failures.push(`run ${run.id} (${branch}): ${error.message}`);
+                      core.error(`Failed to delete run ${run.id} (${branch}): ${error.message}`);
+                      removed = true;
+                    }
+                  }
+                  await sleep(750);
+                }
+              }
+            }
+
+            core.info(`Workflow run cleanup summary: deleted=${deletedRuns}; already absent=${missingRuns}; failures=${failures.length}.`);
+            if (failures.length) {
+              core.setFailed(`Some old branch runs could not be deleted:\n${failures.join("\n")}`);
+            }
+
+      - name: Delete obsolete branches
+        if: success()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            for (const branch of ["main", "automation/upstream-sync"]) {
+              try {
+                await github.rest.git.deleteRef({
+                  owner,
+                  repo,
+                  ref: `heads/${branch}`
+                });
+                core.info(`Deleted branch ${branch}.`);
+              } catch (error) {
+                if (error.status === 404) {
+                  core.info(`Branch ${branch} was already absent.`);
+                } else {
+                  core.setFailed(`Could not delete branch ${branch}: ${error.message}`);
+                  return;
+                }
+              }
+            }
+
+      - name: Remove temporary cleanup workflow
+        if: success()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const path = ".github/workflows/one-time-pr-branch-cleanup.yml";
+            const branch = "client-host";
+            const file = await github.rest.repos.getContent({
+              owner,
+              repo,
+              path,
+              ref: branch
+            });
+
+            if (Array.isArray(file.data) || !file.data.sha) {
+              core.setFailed("Could not identify the temporary workflow file for self-removal.");
+              return;
+            }
+
+            await github.rest.repos.deleteFile({
+              owner,
+              repo,
+              path,
+              message: "chore: remove one-time branch cleanup workflow",
+              sha: file.data.sha,
+              branch
+            });
+            core.info("Temporary cleanup workflow removed.");
